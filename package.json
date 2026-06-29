@@ -1,0 +1,18 @@
+{
+  "name": "reto-ia-bolivar",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "dev:web": "pnpm --filter @reto/web dev",
+    "dev:api": "cd apps/api && python -m uvicorn main:app --reload --port 8000"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

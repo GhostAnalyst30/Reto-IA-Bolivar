@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: reto-ia-bolivar-api
+    runtime: python
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LLM_MODEL_TUTOR
+        value: meta-llama/llama-3.2-3b-instruct:free
+      - key: LLM_MODEL_DIRECTOR
+        value: google/gemini-2.0-flash-exp:free
+      - key: LLM_MODEL_PATH
+        value: meta-llama/llama-3.2-3b-instruct:free
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: ALLOWED_ORIGINS
+        sync: false

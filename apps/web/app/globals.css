@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0a0b;
+  --amber: #c9a227;
+  --blue-deep: #1a2744;
+  --surface: #141416;
+  --border: #2a2a2e;
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: 'Newsreader', Georgia, serif;
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-[#C9A227] to-[#E8D48B] bg-clip-text text-transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
