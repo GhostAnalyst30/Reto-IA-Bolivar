@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { API_URL } from '@/lib/api';
 
-async function getAuthHeaderFromCookies() {
+async function getAuthHeaderFromCookies(): Promise<Record<string, string>> {
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
-async function buildRegisterHeaders(request: NextRequest) {
+async function buildRegisterHeaders(request: NextRequest): Promise<Record<string, string>> {
   const incoming = request.headers.get('Authorization');
   if (incoming?.startsWith('Bearer ')) {
     return { Authorization: incoming };

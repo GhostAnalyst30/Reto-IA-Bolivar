@@ -10,7 +10,7 @@ async function getToken() {
   return session?.access_token;
 }
 
-function authHeaders(token: string | undefined) {
+function authHeaders(token: string | undefined): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

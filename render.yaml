@@ -3,9 +3,11 @@ services:
     name: reto-ia-bolivar-api
     runtime: python
     rootDir: apps/api
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -23,4 +25,8 @@ services:
       - key: LLM_PROVIDER
         value: openrouter
       - key: ALLOWED_ORIGINS
+        sync: false
+      - key: INTERNAL_REGISTER_KEY
+        sync: false
+      - key: APP_URL
         sync: false
