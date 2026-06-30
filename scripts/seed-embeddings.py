@@ -2,7 +2,7 @@
 """Optional: populate vector embeddings via OpenRouter embedding API.
 
 For MVP, tutor RAG uses tsvector text search + resource_embeddings.chunk_text
-(without vectors). Run after seed.sql if you add OPENROUTER_API_KEY and
+(without vectors). Run after 002_rls_and_seed.sql if you add OPENROUTER_API_KEY and
 implement embedding calls against resource_embeddings.embedding.
 """
 print("Tutor RAG activo vía búsqueda de texto + fragmentos en resource_embeddings.")

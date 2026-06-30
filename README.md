@@ -2,6 +2,20 @@
 
 Plataforma institucional con **portal estudiante** (chat IA, rutas, RAG, progreso) y **suite directivos** (5 módulos + Director de IA + admin). Incluye registro con vinculación institucional, aprobación admin y `auth_key` para roles superiores.
 
+## Landing
+![Landing — Bolívar IA](img/imagen_1.png)
+
+![Landing — vista alternativa](img/imagen_1_.png)
+
+## Quiénes somos
+![Página Quiénes somos](img/imagen_2.png)
+
+## Inicio de sesión
+![Pantalla de login](img/imagen_3.png)
+
+## Analítica institucional UTB
+![Dashboard analítica](img/imagen_4.png)
+
 ## Stack
 
 | Capa | Tecnología | Hosting |

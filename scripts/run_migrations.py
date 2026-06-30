@@ -14,12 +14,13 @@ except ImportError:
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 ROOT = Path(__file__).resolve().parent.parent
+SUPABASE = ROOT / "supabase"
 MIGRATIONS = [
-    ROOT / "supabase" / "migrations" / "001_schema.sql",
-    ROOT / "supabase" / "migrations" / "002_security_sessions.sql",
-    ROOT / "supabase" / "migrations" / "003_onboarding.sql",
-    ROOT / "supabase" / "seed.sql",
+    SUPABASE / "001_schema.sql",
+    SUPABASE / "002_rls_and_seed.sql",
 ]
+RESET = SUPABASE / "000_reset.sql"
+DEMO_SEED = SUPABASE / "003_seed_demo_utb.sql"
 
 PROJECT_REF = "vecvvcryqhgrtulnqnxq"
 
@@ -55,6 +56,10 @@ def run_sql_file(conn, path: Path):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Ejecuta scripts SQL de Supabase")
+    parser.add_argument("--reset", action="store_true", help="Ejecutar 000_reset.sql antes (borra todo)")
+    args = parser.parse_args()
     # Cargar PASSWORD desde apps/web/.env.local si existe
     env_local = ROOT / "apps" / "web" / ".env.local"
     if env_local.exists() and not os.getenv("PASSWORD"):
@@ -76,8 +81,9 @@ def main():
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
 
     try:
-        print("\nEjecutando migraciones + seed:")
-        for path in MIGRATIONS:
+        files = ([RESET] if args.reset else []) + MIGRATIONS
+        print("\nEjecutando scripts SQL:")
+        for path in files:
             if not path.exists():
                 print(f"  ✗ No encontrado: {path}")
                 sys.exit(1)
@@ -100,7 +106,9 @@ def main():
             kpis = cur.fetchone()[0]
 
         print(f"\nOK Completado — instituciones: {inst}, recursos: {res}, KPIs: {kpis}")
-        print("\nSiguiente paso: crear usuarios en Supabase Auth y ejecutar supabase/setup-demo-users.sql")
+        print("\nSiguiente paso:")
+        print("  1. SEED_DEMO_PASSWORD=Demo2026! npx tsx scripts/seed-utb-users.ts")
+        print("  2. (opcional) Ejecutar supabase/003_seed_demo_utb.sql en SQL Editor")
     finally:
         conn.close()
 
