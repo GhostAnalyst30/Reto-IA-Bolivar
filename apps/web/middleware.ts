@@ -2,8 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getDefaultPath, getPortalForRole, INSTITUTIONAL_ROLES } from '@/lib/utils';
 
-const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback'];
-const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval'];
+const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback', '/quienes-somos', '/terminos', '/forgot-password', '/reset-password'];
+const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval', '/forgot-password', '/reset-password'];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });

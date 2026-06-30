@@ -5,11 +5,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
-from core.llm import stream_chat_generator
+from core.llm_router import stream_with_fallback
 from routes.deps import require_student
 from agents.tutor_agent import build_tutor_messages
 from agents.path_agent import generate_learning_path
 from agents.search_agent import search_resources
+from agents.vocational_agent import vocational_reply, get_programs
+from services.resource_scraper import search_external, ingest_urls_from_message
 
 router = APIRouter(tags=["student"])
 
@@ -92,31 +94,47 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
     sb.table("messages").insert({"chat_id": chat_id, "role": "user", "content": body.content}).execute()
 
     history = sb.table("messages").select("role, content").eq("chat_id", chat_id).order("created_at").execute()
+    await ingest_urls_from_message(body.content, user.get("institution_id"))
     messages = await build_tutor_messages(history.data or [], body.content)
 
     async def event_generator():
         full = ""
         try:
-            async for token in stream_chat_generator(messages):
-                full += token
-                yield {"event": "token", "data": json.dumps({"token": token})}
+            yield {"event": "thinking", "data": json.dumps({"message": "Buscando recursos del catálogo…"})}
+            async for event in stream_with_fallback(messages):
+                et = event.get("type")
+                if et == "thinking":
+                    yield {"event": "thinking", "data": json.dumps({"message": event.get("message", "")})}
+                elif et == "reasoning":
+                    yield {"event": "reasoning", "data": json.dumps({"content": event.get("content", "")})}
+                elif et == "token":
+                    token = event.get("content", "")
+                    full += token
+                    yield {"event": "token", "data": json.dumps({"token": token})}
+                elif et == "done":
+                    full = event.get("content", full)
             if full.strip():
                 sb.table("messages").insert({
-                    "chat_id": chat_id, "role": "assistant", "content": full,
+                    "chat_id": chat_id, "role": "assistant", "content": full.strip(),
                 }).execute()
                 sb.table("chats").update({
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }).eq("id", chat_id).execute()
-            yield {"event": "done", "data": json.dumps({"content": full})}
+            yield {"event": "done", "data": json.dumps({"content": full.strip()})}
         except Exception as exc:
-            yield {"event": "error", "data": json.dumps({"message": str(exc)})}
+            logger_msg = str(exc)
+            import logging
+            logging.getLogger(__name__).error("Chat stream error: %s", logger_msg)
+            fallback = "Lo siento, el servidor no funciona"
+            yield {"event": "token", "data": json.dumps({"token": fallback})}
+            yield {"event": "done", "data": json.dumps({"content": fallback})}
 
     return EventSourceResponse(event_generator())
 
 
 @router.post("/paths")
 async def create_path(body: PathCreate, user: dict = Depends(require_student)):
-    path_data = await generate_learning_path(body.topic, user["id"])
+    path_data = await generate_learning_path(body.topic, user["id"], user.get("institution_id"))
     sb = get_supabase()
     sync_student_progress(sb, user["id"])
     return path_data
@@ -154,9 +172,21 @@ async def complete_step(path_id: str, step_id: str, user: dict = Depends(require
     return {"completed": True}
 
 
+class VocationalMessage(BaseModel):
+    content: str
+    assessment_id: str | None = None
+
+
 @router.post("/search")
 async def search(body: SearchQuery, user: dict = Depends(require_student)):
-    return await search_resources(body.q)
+    local = await search_resources(body.q)
+    if len(local) < 5:
+        scraped = await search_external(body.q, user.get("institution_id"))
+        seen = {r.get("id") for r in local}
+        for s in scraped:
+            if s.get("id") not in seen:
+                local.append(s)
+    return local
 
 
 @router.get("/resources")
@@ -179,6 +209,13 @@ async def saved_resources(user: dict = Depends(require_student)):
 @router.post("/saved-resources/{resource_id}")
 async def save_resource(resource_id: str, user: dict = Depends(require_student)):
     sb = get_supabase()
+    resource = sb.table("resources").select("id, institution_id").eq("id", resource_id).single().execute()
+    if not resource.data:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
+    inst = user.get("institution_id")
+    res_inst = resource.data.get("institution_id")
+    if res_inst and inst and res_inst != inst:
+        raise HTTPException(status_code=403, detail="Recurso de otra institución")
     sb.table("saved_resources").upsert(
         {"user_id": user["id"], "resource_id": resource_id},
         on_conflict="user_id,resource_id",
@@ -199,3 +236,71 @@ async def get_progress(user: dict = Depends(require_student)):
     sync_student_progress(sb, user["id"])
     result = sb.table("student_progress").select("*").eq("user_id", user["id"]).execute()
     return result.data or []
+
+
+@router.get("/programs")
+async def list_programs(user: dict = Depends(require_student)):
+    inst = user.get("institution_id")
+    if not inst:
+        return []
+    return await get_programs(inst)
+
+
+@router.get("/vocational/assessment")
+async def get_vocational(user: dict = Depends(require_student)):
+    sb = get_supabase()
+    result = sb.table("vocational_assessments").select("*").eq(
+        "user_id", user["id"]
+    ).order("created_at", desc=True).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+@router.post("/vocational/message")
+async def vocational_message(body: VocationalMessage, user: dict = Depends(require_student)):
+    sb = get_supabase()
+    inst = user.get("institution_id")
+    if not inst:
+        raise HTTPException(status_code=400, detail="Vincule una institución primero")
+
+    assessment_id = body.assessment_id
+    if not assessment_id:
+        created = sb.table("vocational_assessments").insert({
+            "user_id": user["id"],
+            "institution_id": inst,
+            "status": "in_progress",
+            "answers": [],
+        }).execute()
+        assessment_id = created.data[0]["id"]
+
+    assessment = sb.table("vocational_assessments").select("*").eq("id", assessment_id).eq(
+        "user_id", user["id"]
+    ).single().execute()
+    if not assessment.data:
+        raise HTTPException(status_code=404)
+
+    answers = assessment.data.get("answers") or []
+    history = [{"role": a["role"], "content": a["content"]} for a in answers]
+    reasoning, reply, suggested_names = await vocational_reply(history, body.content, inst)
+
+    answers.append({"role": "user", "content": body.content})
+    answers.append({"role": "assistant", "content": reply, "reasoning": reasoning})
+
+    programs = await get_programs(inst)
+    suggested_ids = [p["id"] for p in programs if p["name"] in suggested_names]
+    status = "completed" if len(suggested_ids) >= 1 and len(answers) >= 6 else "in_progress"
+
+    sb.table("vocational_assessments").update({
+        "answers": answers,
+        "suggested_program_ids": suggested_ids,
+        "ai_summary": reply if status == "completed" else None,
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", assessment_id).execute()
+
+    return {
+        "assessment_id": assessment_id,
+        "reply": reply,
+        "reasoning": reasoning,
+        "suggested_programs": [p for p in programs if p["id"] in suggested_ids],
+        "status": status,
+    }

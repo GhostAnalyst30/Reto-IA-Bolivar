@@ -1,17 +1,52 @@
-import { ModuleScaffold } from '@/components/institutional/ModuleScaffold';
-import { Card } from '@/components/ui';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
+import { proxyJson } from '@/lib/proxy';
+
+interface Prediction {
+  retention_forecast: number;
+  dropout_risk_percent: number;
+  confidence: string;
+  factors: string[];
+}
 
 export default function PredictionPage() {
+  const [pred, setPred] = useState<Prediction | null>(null);
+
+  useEffect(() => {
+    proxyJson<Prediction>('/institutional/prediction')
+      .then(setPred)
+      .catch(() => setPred(null));
+  }, []);
+
+  if (!pred) return <p className="text-zinc-500">Calculando predicción…</p>;
+
   return (
-    <ModuleScaffold title="Predicción" description="Modelos de retención y deserción (demo)" icon="TrendingUp">
-      <Card>
-        <h3 className="font-semibold">Predicción de retención — Semestre 2026-1</h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <div><p className="text-sm text-zinc-500">Riesgo alto</p><p className="text-2xl font-bold text-red-400">12%</p></div>
-          <div><p className="text-sm text-zinc-500">Riesgo medio</p><p className="text-2xl font-bold text-yellow-400">23%</p></div>
-          <div><p className="text-sm text-zinc-500">Estable</p><p className="text-2xl font-bold text-green-400">65%</p></div>
-        </div>
-      </Card>
-    </ModuleScaffold>
+    <div className="min-h-[calc(100vh-8rem)]">
+      <h1 className="font-display mb-6 text-2xl font-bold">Predicción de retención</h1>
+      <BentoGrid cols={3}>
+        <BentoCell>
+          <p className="text-sm text-zinc-500">Retención proyectada</p>
+          <p className="mt-2 text-4xl font-bold text-brand-amber">{pred.retention_forecast}%</p>
+        </BentoCell>
+        <BentoCell>
+          <p className="text-sm text-zinc-500">Riesgo deserción</p>
+          <p className="mt-2 text-4xl font-bold text-red-400">{pred.dropout_risk_percent}%</p>
+        </BentoCell>
+        <BentoCell>
+          <p className="text-sm text-zinc-500">Confianza del modelo</p>
+          <p className="mt-2 text-2xl font-semibold capitalize">{pred.confidence}</p>
+        </BentoCell>
+        <BentoCell colSpan={3}>
+          <p className="font-medium mb-3">Factores considerados</p>
+          <ul className="space-y-2 text-zinc-500">
+            {pred.factors.map((f) => (
+              <li key={f}>• {f}</li>
+            ))}
+          </ul>
+        </BentoCell>
+      </BentoGrid>
+    </div>
   );
 }

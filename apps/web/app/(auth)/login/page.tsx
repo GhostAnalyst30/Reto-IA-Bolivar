@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Button, Card, Input, Label } from '@/components/ui';
+import { Button, Input, Label, Select } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import { BentoCell } from '@/components/ui/BentoGrid';
 import { getDefaultPath } from '@/lib/utils';
 
 export default function LoginPage() {
@@ -46,8 +47,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_#1A2744_0%,_transparent_70%)]" />
-      <Card className="relative w-full max-w-md">
+      <BentoCell animate={false} className="relative w-full max-w-md">
         <Link href="/" className="font-display text-2xl font-bold">
           Bolívar<span className="text-brand-amber">IA</span>
         </Link>
@@ -61,6 +61,9 @@ export default function LoginPage() {
             <Label htmlFor="password">Contraseña</Label>
             <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-sm text-brand-amber hover:underline">¿Olvidaste tu contraseña?</Link>
+          </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
@@ -70,7 +73,7 @@ export default function LoginPage() {
           <p><Link href="/register/student" className="text-brand-amber hover:underline">Registro estudiante</Link></p>
           <p><Link href="/register/institutional" className="text-brand-amber hover:underline">Registro institucional</Link></p>
         </div>
-      </Card>
+      </BentoCell>
     </div>
   );
 }

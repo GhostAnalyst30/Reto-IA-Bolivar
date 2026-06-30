@@ -42,9 +42,12 @@ def _parse_llm_steps(raw: str, relevant: list[dict], topic: str) -> list[dict]:
     return steps or _rule_based_steps(topic, relevant)
 
 
-async def generate_learning_path(topic: str, user_id: str) -> dict:
+async def generate_learning_path(topic: str, user_id: str, institution_id: str | None = None) -> dict:
     sb = get_supabase()
-    resources = sb.table("resources").select("id, title, topic, description").limit(30).execute()
+    query = sb.table("resources").select("id, title, topic, description")
+    if institution_id:
+        query = query.eq("institution_id", institution_id)
+    resources = query.limit(30).execute()
     resource_list = resources.data or []
 
     relevant = [

@@ -33,11 +33,21 @@ export async function proxyJson<T = unknown>(path: string, options: RequestInit 
   return data as T;
 }
 
+export interface StreamCallbacks {
+  onThinking?: (message: string) => void;
+  onReasoning?: (content: string) => void;
+  onToken?: (token: string) => void;
+}
+
 export async function proxyStream(
   path: string,
   body: object,
-  onToken: (token: string) => void,
+  callbacks: StreamCallbacks | ((token: string) => void),
 ): Promise<string> {
+  const cb: StreamCallbacks = typeof callbacks === 'function'
+    ? { onToken: callbacks }
+    : callbacks;
+
   const res = await fetch(`/api/proxy?path=${encodeURIComponent(path)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -61,6 +71,7 @@ export async function proxyStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let full = '';
+  let currentEvent = 'message';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -69,18 +80,23 @@ export async function proxyStream(
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
     for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim();
+        continue;
+      }
       if (!line.startsWith('data: ')) continue;
       try {
         const parsed = JSON.parse(line.slice(6));
-        if (parsed.token) {
+        if (currentEvent === 'thinking' && parsed.message) {
+          cb.onThinking?.(parsed.message);
+        } else if (currentEvent === 'reasoning' && parsed.content) {
+          cb.onReasoning?.(parsed.content);
+        } else if (parsed.token) {
           full += parsed.token;
-          onToken(parsed.token);
+          cb.onToken?.(parsed.token);
         }
-        if (parsed.message) {
-          throw new ProxyError(parsed.message, 502);
-        }
-      } catch (e) {
-        if (e instanceof ProxyError) throw e;
+      } catch {
+        /* ignore parse errors */
       }
     }
   }

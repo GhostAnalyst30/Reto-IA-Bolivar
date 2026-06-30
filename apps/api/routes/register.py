@@ -14,7 +14,7 @@ class StudentRegister(BaseModel):
     user_id: str
     email: EmailStr
     full_name: str
-    institution_id: str
+    institution_id: str | None = None
 
 
 class InstitutionalRegister(BaseModel):
@@ -70,11 +70,7 @@ async def list_institutions():
         result = sb.table("institutions").select("id, name, slug").eq("is_active", True).execute()
         return result.data or []
     except Exception:
-        return [{
-            "id": "a0000000-0000-4000-8000-000000000001",
-            "name": "Universidad Bolívar Demo",
-            "slug": "uni-bolivar-demo",
-        }]
+        raise HTTPException(status_code=503, detail="No se pudieron cargar instituciones")
 
 
 @router.post("/register/student")
@@ -85,7 +81,8 @@ async def register_student(
 ):
     await _verify_register_caller(body.user_id, body.email, authorization, x_internal_register_key)
     sb = get_supabase()
-    _validate_institution(sb, body.institution_id)
+    if body.institution_id:
+        _validate_institution(sb, body.institution_id)
 
     sb.table("users").upsert({
         "id": body.user_id,
@@ -96,12 +93,13 @@ async def register_student(
         "status": "pending",
     }, on_conflict="id").execute()
 
-    sb.table("registration_requests").upsert({
-        "user_id": body.user_id,
-        "institution_id": body.institution_id,
-        "requested_role": "student",
-        "status": "pending",
-    }, on_conflict="user_id").execute()
+    if body.institution_id:
+        sb.table("registration_requests").upsert({
+            "user_id": body.user_id,
+            "institution_id": body.institution_id,
+            "requested_role": "student",
+            "status": "pending",
+        }, on_conflict="user_id").execute()
 
     return {"status": "pending", "message": "Solicitud enviada. Espera aprobación del administrador."}
 

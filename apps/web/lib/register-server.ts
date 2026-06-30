@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAppUrl, sendConfirmationEmail } from '@/lib/email';
+import { getAppUrl, sendConfirmationEmail, isDemoEmail } from '@/lib/email';
 import { API_URL } from '@/lib/api';
 
 async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
@@ -78,6 +78,10 @@ export async function callBackendRegister(
 }
 
 export async function sendConfirmLink(email: string, fullName: string) {
+  if (isDemoEmail(email)) {
+    return { skipped: true };
+  }
+
   const admin = createAdminClient();
   const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent('/pending-approval')}`;
 

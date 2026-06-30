@@ -1,7 +1,7 @@
 -- Seed demo data (run after migrations, with auth users created separately)
 -- Institution
 INSERT INTO institutions (id, name, slug) VALUES
-  ('a0000000-0000-4000-8000-000000000001', 'Universidad Bolívar Demo', 'uni-bolivar-demo')
+  ('a0000000-0000-4000-8000-000000000001', 'Universidad Tecnológica de Bolívar', 'utb')
 ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO faculties (id, institution_id, name, slug) VALUES

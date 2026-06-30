@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { API_URL } from '@/lib/api';
+import { isPathAllowed } from '@/lib/proxy-allowlist';
 
 export const runtime = 'nodejs';
 
-async function getToken() {
+async function getAuth() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { token: undefined, role: '' };
+
+  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
   const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token;
+  return { token: session?.access_token, role: profile?.role || '' };
 }
 
 function authHeaders(token: string | undefined): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function deny(message: string, status = 403) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET(request: NextRequest) {
   const path = request.nextUrl.searchParams.get('path');
   if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-  const token = await getToken();
+
+  const { token, role } = await getAuth();
+  if (!token) return deny('No autenticado', 401);
+  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+
   const res = await fetch(`${API_URL}${path}`, { headers: authHeaders(token) });
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
@@ -26,7 +39,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const path = request.nextUrl.searchParams.get('path');
   if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-  const token = await getToken();
+
+  const { token, role } = await getAuth();
+  if (!token) return deny('No autenticado', 401);
+  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+
   const body = await request.text();
 
   if (path.includes('/messages')) {
@@ -61,7 +78,11 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const path = request.nextUrl.searchParams.get('path');
   if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-  const token = await getToken();
+
+  const { token, role } = await getAuth();
+  if (!token) return deny('No autenticado', 401);
+  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+
   const body = await request.text();
   const res = await fetch(`${API_URL}${path}`, {
     method: 'PATCH',
@@ -75,7 +96,11 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const path = request.nextUrl.searchParams.get('path');
   if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-  const token = await getToken();
+
+  const { token, role } = await getAuth();
+  if (!token) return deny('No autenticado', 401);
+  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+
   const res = await fetch(`${API_URL}${path}`, {
     method: 'DELETE',
     headers: authHeaders(token),

@@ -5,7 +5,6 @@ import {
   ModuleBentoGrid,
   ExperienceShowcase,
   KpiCarousel,
-  SecurityTrustSection,
   FinalCta,
 } from '@/components/landing/sections';
 
@@ -19,7 +18,6 @@ export default function HomePage() {
         <ModuleBentoGrid />
         <ExperienceShowcase />
         <KpiCarousel />
-        <SecurityTrustSection />
         <FinalCta />
       </main>
       <SiteFooter />

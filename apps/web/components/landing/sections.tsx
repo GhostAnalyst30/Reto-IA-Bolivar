@@ -178,29 +178,6 @@ export function KpiCarousel() {
   );
 }
 
-export function SecurityTrustSection() {
-  return (
-    <section id="seguridad" className="py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="rounded-2xl border border-brand-border bg-brand-surface p-10 md:p-16">
-          <h2 className="font-display text-3xl font-bold">Seguridad institucional</h2>
-          <p className="mt-4 max-w-2xl text-zinc-400">
-            OWASP Top 10, RBAC por rol, RLS en base de datos, auth-keys para roles superiores
-            y panel de alertas exclusivo para administradores.
-          </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {['RBAC + RLS', 'Auth-keys', 'Alertas admin', 'Rate limiting'].map((t) => (
-              <div key={t} className="rounded-lg border border-brand-border bg-brand-bg px-4 py-3 text-sm text-zinc-300">
-                {t}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function FinalCta() {
   return (
     <section className="py-24">

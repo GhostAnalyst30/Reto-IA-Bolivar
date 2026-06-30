@@ -1,21 +1,41 @@
-import { ModuleScaffold } from '@/components/institutional/ModuleScaffold';
-import { Card } from '@/components/ui';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
+import { proxyJson } from '@/lib/proxy';
+import { Button } from '@/components/ui';
 
 export default function ExecutiveSummaryPage() {
+  const [insights, setInsights] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const data = await proxyJson<{ insights: string }>('/institutional/director/chat', { method: 'POST' });
+      setInsights(data.insights || '');
+    } catch {
+      setInsights('Lo siento, el servidor no funciona');
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
   return (
-    <ModuleScaffold title="Resumen ejecutivo" description="Informe consolidado para directivos" icon="ClipboardList">
-      <Card className="prose prose-invert max-w-none">
-        <h3 className="text-lg font-semibold text-white">Resumen Q4 2025</h3>
-        <p className="text-zinc-400 mt-4 leading-relaxed">
-          La institución mantiene una retención del 87.5%, superando la meta del 85%. La satisfacción estudiantil
-          alcanzó 4.2/5. Se recomienda invertir en tutoría IA para reducir deserción en primer semestre.
-        </p>
-        <ul className="mt-4 space-y-2 text-zinc-400">
-          <li>• Fortalecer programa de investigación (+12 papers vs meta)</li>
-          <li>• Optimizar ejecución presupuestal en infraestructura</li>
-          <li>• Expandir portal estudiante a todas las facultades</li>
-        </ul>
-      </Card>
-    </ModuleScaffold>
+    <div className="min-h-[calc(100vh-8rem)]">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="font-display text-2xl font-bold">Resumen ejecutivo</h1>
+        <Button size="sm" onClick={load} disabled={loading}>{loading ? 'Generando…' : 'Actualizar'}</Button>
+      </div>
+      <BentoGrid cols={1}>
+        <BentoCell colSpan={3}>
+          <p className="text-sm text-zinc-500 mb-4">Generado desde KPIs en tiempo real — UTB</p>
+          <div className="prose prose-invert max-w-none whitespace-pre-wrap text-zinc-400 leading-relaxed">
+            {insights || 'Cargando resumen…'}
+          </div>
+        </BentoCell>
+      </BentoGrid>
+    </div>
   );
 }

@@ -91,9 +91,12 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
 @router.get("/auth-keys")
 async def list_auth_keys(admin: dict = Depends(require_admin)):
     sb = get_supabase()
-    result = sb.table("role_auth_keys").select(
+    query = sb.table("role_auth_keys").select(
         "id, institution_id, role, label, max_uses, uses_count, expires_at, revoked_at, created_at, institutions(name)"
-    ).order("created_at", desc=True).execute()
+    )
+    if admin.get("institution_id"):
+        query = query.eq("institution_id", admin["institution_id"])
+    result = query.order("created_at", desc=True).execute()
     return result.data or []
 
 
@@ -151,3 +154,66 @@ async def revoke_session(session_id: str, admin: dict = Depends(require_admin)):
         "revoked_by": admin["id"],
     }).eq("id", session_id).execute()
     return {"status": "revoked"}
+
+
+class ProgramCreate(BaseModel):
+    name: str
+    description: str | None = None
+    faculty_id: str | None = None
+
+
+@router.get("/programs")
+async def admin_list_programs(admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    inst = admin.get("institution_id")
+    query = sb.table("academic_programs").select("*, program_curricula(*)")
+    if inst:
+        query = query.eq("institution_id", inst)
+    return query.order("name").execute().data or []
+
+
+@router.post("/programs")
+async def admin_create_program(body: ProgramCreate, admin: dict = Depends(require_admin)):
+    inst = admin.get("institution_id")
+    if not inst:
+        raise HTTPException(status_code=400, detail="Admin sin institución")
+    sb = get_supabase()
+    result = sb.table("academic_programs").insert({
+        "institution_id": inst,
+        "name": body.name,
+        "description": body.description,
+        "faculty_id": body.faculty_id,
+        "is_active": True,
+    }).execute()
+    return result.data[0]
+
+
+@router.patch("/programs/{program_id}")
+async def admin_update_program(program_id: str, body: ProgramCreate, admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    sb.table("academic_programs").update({
+        "name": body.name,
+        "description": body.description,
+        "faculty_id": body.faculty_id,
+    }).eq("id", program_id).execute()
+    return {"updated": True}
+
+
+@router.delete("/programs/{program_id}")
+async def admin_delete_program(program_id: str, admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    sb.table("academic_programs").update({"is_active": False}).eq("id", program_id).execute()
+    return {"deleted": True}
+
+
+@router.post("/scraper/run")
+async def run_scraper(admin: dict = Depends(require_admin)):
+    from services.resource_scraper import search_external
+    results = await search_external("programación python", admin.get("institution_id"))
+    return {"indexed": len(results)}
+
+
+@router.get("/reports/weekly-data")
+async def weekly_report_data(admin: dict = Depends(require_admin)):
+    from services.analytics_service import compute_dashboard
+    return compute_dashboard(admin)
