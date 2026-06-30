@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Badge, Button } from '@/components/ui';
 import { Shield, AlertTriangle } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
 
 interface SecurityEvent {
   id: string;
@@ -24,21 +25,31 @@ interface Session {
 export default function SecurityPage() {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const [ev, sess] = await Promise.all([
-      fetch('/api/proxy?path=/admin/security-events').then((r) => r.json()),
-      fetch('/api/proxy?path=/admin/sessions').then((r) => r.json()),
-    ]);
-    setEvents(ev || []);
-    setSessions(sess || []);
+    try {
+      const [ev, sess] = await Promise.all([
+        proxyJson<SecurityEvent[]>('/admin/security-events'),
+        proxyJson<Session[]>('/admin/sessions'),
+      ]);
+      setEvents(Array.isArray(ev) ? ev : []);
+      setSessions(Array.isArray(sess) ? sess : []);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar panel de seguridad');
+    }
   }
 
   async function revokeSession(id: string) {
-    await fetch(`/api/proxy?path=/admin/sessions/${id}/revoke`, { method: 'POST', body: '{}' });
-    load();
+    try {
+      await proxyJson(`/admin/sessions/${id}/revoke`, { method: 'POST', body: '{}' });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al revocar sesión');
+    }
   }
 
   const critical = events.filter((e) => e.severity === 'high' || e.severity === 'critical');
@@ -52,6 +63,7 @@ export default function SecurityPage() {
           <Badge variant="red">{critical.length} alertas activas</Badge>
         )}
       </div>
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <section>
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -74,17 +86,21 @@ export default function SecurityPage() {
 
       <section>
         <h3 className="font-semibold mb-4">Sesiones activas</h3>
-        <div className="space-y-2">
-          {sessions.map((s) => (
-            <Card key={s.id} className="flex justify-between items-center py-3">
-              <div>
-                <p className="font-medium text-sm">{s.users?.full_name || s.users?.email}</p>
-                <p className="text-xs text-zinc-500">{s.portal} · {s.role}</p>
-              </div>
-              <Button size="sm" variant="danger" onClick={() => revokeSession(s.id)}>Revocar</Button>
-            </Card>
-          ))}
-        </div>
+        {sessions.length === 0 ? (
+          <Card><p className="text-zinc-500">No hay sesiones registradas en el sistema.</p></Card>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map((s) => (
+              <Card key={s.id} className="flex justify-between items-center py-3">
+                <div>
+                  <p className="font-medium text-sm">{s.users?.full_name || s.users?.email}</p>
+                  <p className="text-xs text-zinc-500">{s.portal} · {s.role}</p>
+                </div>
+                <Button size="sm" variant="danger" onClick={() => revokeSession(s.id)}>Revocar</Button>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

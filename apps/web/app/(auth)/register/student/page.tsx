@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { API_URL } from '@/lib/api';
 
 interface Institution {
@@ -22,7 +22,6 @@ export default function RegisterStudentPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     fetch(`${API_URL}/institutions`)
@@ -36,32 +35,29 @@ export default function RegisterStudentPage() {
     setLoading(true);
     setError('');
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-
-    if (signUpError || !data.user) {
-      setError(signUpError?.message || 'Error al registrarse');
-      setLoading(false);
-      return;
-    }
-
     try {
-      await fetch('/api/register/student', {
+      const res = await fetch('/api/auth/register-student', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: data.user.id,
           email,
+          password,
           full_name: fullName,
           institution_id: institutionId,
         }),
       });
-      router.push('/pending-approval');
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Error al registrarse');
+        setLoading(false);
+        return;
+      }
+
+      sessionStorage.setItem('pending_confirmation', JSON.stringify({ email, full_name: fullName }));
+      router.push(`/register/check-email?email=${encodeURIComponent(email)}`);
     } catch {
-      setError('Error al crear solicitud');
+      setError('Error de conexión');
     }
     setLoading(false);
   }
@@ -75,7 +71,7 @@ export default function RegisterStudentPage() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div><Label htmlFor="name">Nombre completo</Label><Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div><Label htmlFor="email">Correo</Label><Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-          <div><Label htmlFor="password">Contraseña</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
+          <div><Label htmlFor="password">Contraseña</Label><PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
           <div>
             <Label htmlFor="inst">Institución</Label>
             <Select id="inst" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} required>

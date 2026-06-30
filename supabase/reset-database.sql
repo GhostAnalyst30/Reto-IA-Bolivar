@@ -33,6 +33,9 @@ DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP FUNCTION IF EXISTS public.is_approved_user();
 DROP FUNCTION IF EXISTS public.is_admin();
 
+-- Políticas de 004 (por si se aplicó parcialmente)
+DROP POLICY IF EXISTS faculties_read ON public.faculties;
+
 -- Extensiones (opcional: descomenta si quieres quitarlas también)
 -- DROP EXTENSION IF EXISTS vector;
 -- DROP EXTENSION IF EXISTS "uuid-ossp";

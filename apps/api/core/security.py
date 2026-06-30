@@ -35,7 +35,3 @@ async def get_current_user(authorization: str | None = Header(None)) -> dict:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile.data
 
-
-async def require_admin(user: dict = None) -> dict:
-    from routes.deps import get_user_dep
-    raise NotImplementedError

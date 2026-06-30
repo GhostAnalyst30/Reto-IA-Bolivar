@@ -2,19 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui';
+import { proxyJson } from '@/lib/proxy';
 
 interface Progress { topic: string; progress_percent: number }
 
 export default function ProgressPage() {
   const [items, setItems] = useState<Progress[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/proxy?path=/progress').then((r) => r.json()).then(setItems);
+    proxyJson<Progress[]>('/progress')
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar progreso'));
   }, []);
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Progreso por tema</h2>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {items.length === 0 && !error && (
+        <p className="text-zinc-500">Completa pasos en tus rutas de aprendizaje para ver progreso aquí.</p>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         {items.map((p) => (
           <Card key={p.topic}>

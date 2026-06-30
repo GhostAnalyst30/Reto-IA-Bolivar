@@ -28,6 +28,7 @@ scripts/           → Utilidades (embeddings)
    - `supabase/migrations/001_schema.sql`
    - `supabase/migrations/002_security_sessions.sql`
    - `supabase/migrations/003_onboarding.sql`
+   - `supabase/migrations/004_rls_fixes.sql`
    - `supabase/seed.sql`
 3. Crear usuarios demo en Authentication (email/password):
 
@@ -53,7 +54,12 @@ WHERE email = 'admin@demo.uni';
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 API_URL=http://localhost:8000
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+INTERNAL_REGISTER_KEY=mismo-secreto-que-en-api
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=Bolívar IA <onboarding@resend.dev>
 ```
 
 **apps/api/.env**
@@ -64,7 +70,21 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 OPENROUTER_API_KEY=sk-or-...
 ALLOWED_ORIGINS=http://localhost:3000
 APP_URL=http://localhost:3000
+INTERNAL_REGISTER_KEY=mismo-secreto-que-en-web
 ```
+
+### Confirmación de correo (Resend)
+
+1. Crear cuenta en [resend.com](https://resend.com) (plan gratis: 100 emails/día).
+2. Copiar API key → `RESEND_API_KEY` en `apps/web/.env.local`.
+3. En desarrollo usar `RESEND_FROM_EMAIL=Bolívar IA <onboarding@resend.dev>` (solo envía a tu email verificado en Resend).
+4. En Supabase → **Authentication → URL Configuration** agregar:
+   - Site URL: `http://localhost:3000`
+   - Redirect URLs: `http://localhost:3000/auth/callback`
+5. **Authentication → Providers → Email** → puedes dejar **Confirm email** activo; el registro ya **no usa** `signUp` del cliente (evita el rate limit de emails de Supabase). Solo Resend envía el correo.
+6. Generar un secreto compartido y ponerlo en `INTERNAL_REGISTER_KEY` (web + api).
+
+Flujo: registro → solicitud creada → correo Resend con enlace token → clic → sesión activa → `/pending-approval`.
 
 ### 3. Instalar y ejecutar
 
@@ -100,13 +120,12 @@ Insertar hash en `role_auth_keys` con rol `dean`.
 
 ## Cuentas demo
 
-| Usuario | Portal |
-|---------|--------|
-| estudiante@demo.uni | `/student/chat` |
-| decano@demo.uni | `/institutional/analytics` |
-| admin@demo.uni | `/institutional/admin` |
-
-Password: `Demo2026!`
+| Usuario | Contraseña | Rol | Portal |
+|---------|------------|-----|--------|
+| `estudiante@demo.uni` | `Demo2026!` | Estudiante | `/student/chat` |
+| `decano@demo.uni` | `Demo2026!` | Decano | `/institutional/analytics` |
+| `rector@demo.uni` | `Demo2026!` | Rector | `/institutional/analytics` |
+| `admin@demo.uni` | `Demo2026!` | Admin | `/institutional/admin` |
 
 ## Documentación
 

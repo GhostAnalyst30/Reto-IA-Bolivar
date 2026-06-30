@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Pre-seed resource embeddings (optional — run after Supabase setup)."""
-import os
-import sys
+"""Optional: populate vector embeddings via OpenRouter embedding API.
 
-print("Embeddings seed: use OpenAI/OpenRouter embedding API in production.")
-print("For MVP, text search via tsvector is active. Resource chunks are in seed.sql.")
-sys.exit(0)
+For MVP, tutor RAG uses tsvector text search + resource_embeddings.chunk_text
+(without vectors). Run after seed.sql if you add OPENROUTER_API_KEY and
+implement embedding calls against resource_embeddings.embedding.
+"""
+print("Tutor RAG activo vía búsqueda de texto + fragmentos en resource_embeddings.")
+print("Embeddings vectoriales opcionales — no requeridos para el MVP.")

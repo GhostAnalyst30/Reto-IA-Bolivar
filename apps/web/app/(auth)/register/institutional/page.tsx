@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { API_URL } from '@/lib/api';
 import { ROLE_LABELS } from '@/lib/utils';
 
@@ -23,7 +23,6 @@ export default function RegisterInstitutionalPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     fetch(`${API_URL}/institutions`).then((r) => r.json()).then(setInstitutions).catch(() => {});
@@ -34,34 +33,31 @@ export default function RegisterInstitutionalPage() {
     setLoading(true);
     setError('');
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email, password, options: { data: { full_name: fullName } },
-    });
-
-    if (signUpError || !data.user) {
-      setError(signUpError?.message || 'Error al registrarse');
-      setLoading(false);
-      return;
-    }
-
     try {
-      const res = await fetch('/api/register/institutional', {
+      const res = await fetch('/api/auth/register-institutional', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: data.user.id, email, full_name: fullName,
-          institution_id: institutionId, requested_role: role, auth_key: authKey,
+          email,
+          password,
+          full_name: fullName,
+          institution_id: institutionId,
+          requested_role: role,
+          auth_key: authKey,
         }),
       });
+
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        setError(err.error || 'Clave de autorización inválida');
+        setError(data.error || 'Error al registrarse');
         setLoading(false);
         return;
       }
-      router.push('/pending-approval');
+
+      sessionStorage.setItem('pending_confirmation', JSON.stringify({ email, full_name: fullName }));
+      router.push(`/register/check-email?email=${encodeURIComponent(email)}`);
     } catch {
-      setError('Error al crear solicitud');
+      setError('Error de conexión');
     }
     setLoading(false);
   }
@@ -75,7 +71,7 @@ export default function RegisterInstitutionalPage() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div><Label>Nombre completo</Label><Input value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div><Label>Correo</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-          <div><Label>Contraseña</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
+          <div><Label htmlFor="password">Contraseña</Label><PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
           <div>
             <Label>Institución</Label>
             <Select value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} required>

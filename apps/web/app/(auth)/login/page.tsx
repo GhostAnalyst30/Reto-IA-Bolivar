@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button, Card, Input, Label } from '@/components/ui';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { getDefaultPath } from '@/lib/utils';
 
 export default function LoginPage() {
@@ -58,7 +59,7 @@ export default function LoginPage() {
           </div>
           <div>
             <Label htmlFor="password">Contraseña</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>

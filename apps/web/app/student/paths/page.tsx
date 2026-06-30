@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, Input, Label } from '@/components/ui';
 import { BookOpen, Plus } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
 
 interface Path {
   id: string;
@@ -17,21 +18,31 @@ export default function PathsPage() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const res = await fetch('/api/proxy?path=/paths');
-    setPaths(await res.json());
+    try {
+      const data = await proxyJson<Path[]>('/paths');
+      setPaths(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar rutas');
+    }
   }
 
   async function createPath(e: React.FormEvent) {
     e.preventDefault();
     if (!topic.trim()) return;
     setLoading(true);
-    await fetch('/api/proxy?path=/paths', { method: 'POST', body: JSON.stringify({ topic }) });
-    setTopic('');
-    await load();
+    setError('');
+    try {
+      await proxyJson('/paths', { method: 'POST', body: JSON.stringify({ topic }) });
+      setTopic('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al generar ruta');
+    }
     setLoading(false);
   }
 
@@ -39,6 +50,7 @@ export default function PathsPage() {
     <div className="space-y-6">
       <Card>
         <h2 className="font-semibold">Generar ruta de aprendizaje</h2>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
         <form onSubmit={createPath} className="mt-4 flex gap-3">
           <div className="flex-1">
             <Label>Tema</Label>

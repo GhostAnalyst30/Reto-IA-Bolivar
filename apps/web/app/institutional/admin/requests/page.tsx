@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button, Card, Badge, Input } from '@/components/ui';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Check, X } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
 
 interface Request {
   id: string;
@@ -17,32 +18,48 @@ export default function AdminRequestsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const res = await fetch('/api/proxy?path=/admin/requests');
-    setRequests(await res.json());
+    try {
+      const data = await proxyJson<Request[]>('/admin/requests');
+      setRequests(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar solicitudes');
+      setRequests([]);
+    }
   }
 
   async function approve(id: string) {
-    await fetch(`/api/proxy?path=/admin/requests/${id}/approve`, { method: 'POST', body: '{}' });
-    load();
+    try {
+      await proxyJson(`/admin/requests/${id}/approve`, { method: 'POST', body: '{}' });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al aprobar');
+    }
   }
 
   async function reject(id: string) {
-    await fetch(`/api/proxy?path=/admin/requests/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: reason || 'Solicitud no aprobada' }),
-    });
-    setRejectId(null);
-    setReason('');
-    load();
+    try {
+      await proxyJson(`/admin/requests/${id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || 'Solicitud no aprobada' }),
+      });
+      setRejectId(null);
+      setReason('');
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al rechazar');
+    }
   }
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Solicitudes pendientes</h2>
+      {error && <p className="text-sm text-red-400">{error}</p>}
       {requests.length === 0 ? (
         <Card><p className="text-zinc-500">No hay solicitudes pendientes.</p></Card>
       ) : (

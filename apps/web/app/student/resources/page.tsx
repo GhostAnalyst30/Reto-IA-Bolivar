@@ -3,27 +3,36 @@
 import { useEffect, useState } from 'react';
 import { Button, Card } from '@/components/ui';
 import { Bookmark, BookmarkCheck } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
 
 interface Resource { id: string; title: string; description?: string; topic?: string }
 
 export default function ResourcesPage() {
   const [all, setAll] = useState<Resource[]>([]);
   const [saved, setSaved] = useState<Set<string>>(new Set());
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/proxy?path=/resources').then((r) => r.json()).then(setAll);
-    fetch('/api/proxy?path=/saved-resources').then((r) => r.json()).then((data) => {
-      setSaved(new Set(data.map((s: { resource_id: string }) => s.resource_id)));
-    });
+    proxyJson<Resource[]>('/resources')
+      .then((data) => setAll(Array.isArray(data) ? data : []))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar recursos'));
+    proxyJson<{ resource_id: string }[]>('/saved-resources')
+      .then((data) => setSaved(new Set((Array.isArray(data) ? data : []).map((s) => s.resource_id))))
+      .catch(() => {});
   }, []);
 
   async function toggle(id: string) {
-    if (saved.has(id)) {
-      await fetch(`/api/proxy?path=/saved-resources/${id}`, { method: 'DELETE' });
-      setSaved((s) => { const n = new Set(s); n.delete(id); return n; });
-    } else {
-      await fetch(`/api/proxy?path=/saved-resources/${id}`, { method: 'POST' });
-      setSaved((s) => new Set(s).add(id));
+    setError('');
+    try {
+      if (saved.has(id)) {
+        await proxyJson(`/saved-resources/${id}`, { method: 'DELETE' });
+        setSaved((s) => { const n = new Set(s); n.delete(id); return n; });
+      } else {
+        await proxyJson(`/saved-resources/${id}`, { method: 'POST', body: '{}' });
+        setSaved((s) => new Set(s).add(id));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al guardar recurso');
     }
   }
 
@@ -31,6 +40,7 @@ export default function ResourcesPage() {
 
   return (
     <div className="space-y-8">
+      {error && <p className="text-sm text-red-400">{error}</p>}
       <section>
         <h2 className="text-xl font-semibold mb-4">Mis recursos guardados</h2>
         {savedList.length === 0 ? (

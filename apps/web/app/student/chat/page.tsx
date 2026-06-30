@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { Send, Plus, MessageSquare } from 'lucide-react';
+import { proxyJson, proxyStream } from '@/lib/proxy';
 
 interface Chat { id: string; title: string; updated_at: string }
 interface Message { id: string; role: string; content: string }
@@ -13,6 +14,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadChats(); }, []);
@@ -24,33 +26,52 @@ export default function ChatPage() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   async function loadChats() {
-    const res = await fetch('/api/proxy?path=/chats');
-    const data = await res.json();
-    setChats(data || []);
-    if (data?.[0] && !activeChat) setActiveChat(data[0].id);
+    try {
+      const data = await proxyJson<Chat[]>('/chats');
+      setChats(data || []);
+      if (data?.[0]) {
+        setActiveChat(data[0].id);
+      } else {
+        const chat = await proxyJson<Chat>('/chats', {
+          method: 'POST',
+          body: JSON.stringify({ title: 'Nueva conversación' }),
+        });
+        setChats([chat]);
+        setActiveChat(chat.id);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar chats');
+    }
   }
 
   async function loadMessages(chatId: string) {
-    const res = await fetch(`/api/proxy?path=/chats/${chatId}/messages`);
-    const data = await res.json();
-    setMessages(data || []);
+    try {
+      const data = await proxyJson<Message[]>(`/chats/${chatId}/messages`);
+      setMessages(Array.isArray(data) ? data : []);
+    } catch {
+      setMessages([]);
+    }
   }
 
   async function newChat() {
-    const res = await fetch('/api/proxy?path=/chats', {
-      method: 'POST',
-      body: JSON.stringify({ title: 'Nueva conversación' }),
-    });
-    const chat = await res.json();
-    setChats((c) => [chat, ...c]);
-    setActiveChat(chat.id);
-    setMessages([]);
+    try {
+      const chat = await proxyJson<Chat>('/chats', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'Nueva conversación' }),
+      });
+      setChats((c) => [chat, ...c]);
+      setActiveChat(chat.id);
+      setMessages([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al crear chat');
+    }
   }
 
   async function send() {
     if (!input.trim() || !activeChat || streaming) return;
     const content = input.trim();
     setInput('');
+    setError('');
     setMessages((m) => [...m, { id: 'tmp', role: 'user', content }]);
     setStreaming(true);
 
@@ -58,40 +79,24 @@ export default function ChatPage() {
     setMessages((m) => [...m, { id: 'tmp2', role: 'assistant', content: '' }]);
 
     try {
-      const res = await fetch(`/api/proxy?path=/chats/${activeChat}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ content }),
-      });
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error('No stream');
-
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n');
-        buffer = parts.pop() || '';
-        for (const line of parts) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.token) {
-                assistant += data.token;
-                setMessages((m) => {
-                  const copy = [...m];
-                  copy[copy.length - 1] = { id: 'tmp2', role: 'assistant', content: assistant };
-                  return copy;
-                });
-              }
-            } catch { /* skip */ }
-          }
-        }
-      }
+      await proxyStream(
+        `/chats/${activeChat}/messages`,
+        { content },
+        (token) => {
+          assistant += token;
+          setMessages((m) => {
+            const copy = [...m];
+            copy[copy.length - 1] = { id: 'tmp2', role: 'assistant', content: assistant };
+            return copy;
+          });
+        },
+      );
       loadMessages(activeChat);
-    } catch {
-      setMessages((m) => [...m.slice(0, -1), { id: 'err', role: 'assistant', content: 'Error al conectar con el tutor IA.' }]);
+    } catch (e) {
+      setMessages((m) => [
+        ...m.slice(0, -1),
+        { id: 'err', role: 'assistant', content: e instanceof Error ? e.message : 'Error al conectar con el tutor IA.' },
+      ]);
     }
     setStreaming(false);
   }
@@ -117,6 +122,7 @@ export default function ChatPage() {
       </Card>
 
       <Card className="flex flex-1 flex-col overflow-hidden p-0">
+        {error && <p className="border-b border-brand-border px-4 py-2 text-sm text-red-400">{error}</p>}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
             <p className="text-center text-zinc-500 py-12">Pregunta algo a tu tutor IA institucional</p>

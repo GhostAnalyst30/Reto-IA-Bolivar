@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { Search } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
 
 interface Result { id: string; title: string; description?: string; topic?: string; url?: string }
 
@@ -10,12 +11,19 @@ export default function SearchPage() {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   async function search(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const res = await fetch('/api/proxy?path=/search', { method: 'POST', body: JSON.stringify({ q }) });
-    setResults(await res.json());
+    setError('');
+    try {
+      const data = await proxyJson<Result[]>('/search', { method: 'POST', body: JSON.stringify({ q }) });
+      setResults(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error en la búsqueda');
+      setResults([]);
+    }
     setLoading(false);
   }
 
@@ -25,6 +33,7 @@ export default function SearchPage() {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar recursos educativos..." className="flex-1" />
         <Button type="submit" disabled={loading}><Search className="h-4 w-4" /></Button>
       </form>
+      {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="grid gap-4 md:grid-cols-2">
         {results.map((r) => (
           <Card key={r.id}>
@@ -34,7 +43,9 @@ export default function SearchPage() {
           </Card>
         ))}
       </div>
-      {results.length === 0 && q && !loading && <p className="text-zinc-500">Sin resultados para &quot;{q}&quot;</p>}
+      {results.length === 0 && q && !loading && !error && (
+        <p className="text-zinc-500">Sin resultados para &quot;{q}&quot;</p>
+      )}
     </div>
   );
 }

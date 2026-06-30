@@ -2,42 +2,46 @@
 
 import { useState } from 'react';
 import { Button, Card, Input } from '@/components/ui';
+import { proxyJson, proxyStream } from '@/lib/proxy';
+
+const TUTOR_CHAT_TITLE = 'Tutor RAG';
 
 export default function TutorPage() {
   const [topic, setTopic] = useState('');
   const [response, setResponse] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  async function getOrCreateTutorChat(): Promise<string> {
+    const chats = await proxyJson<{ id: string; title: string }[]>('/chats');
+    const existing = chats.find((c) => c.title === TUTOR_CHAT_TITLE);
+    if (existing) return existing.id;
+    const chat = await proxyJson<{ id: string }>('/chats', {
+      method: 'POST',
+      body: JSON.stringify({ title: TUTOR_CHAT_TITLE }),
+    });
+    return chat.id;
+  }
 
   async function ask(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setResponse('');
-    const res = await fetch('/api/proxy?path=/chats', { method: 'POST', body: JSON.stringify({ title: `Tutor: ${topic}` }) });
-    const chat = await res.json();
-    const msgRes = await fetch(`/api/proxy?path=/chats/${chat.id}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content: `Explícame el tema "${topic}" citando recursos del catálogo institucional.` }),
-    });
-    const reader = msgRes.body?.getReader();
-    const decoder = new TextDecoder();
-    let text = '';
-    if (reader) {
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const d = JSON.parse(line.slice(6));
-              if (d.token) { text += d.token; setResponse(text); }
-            } catch { /* skip */ }
-          }
-        }
-      }
+    setError('');
+    try {
+      const chatId = await getOrCreateTutorChat();
+      const prompt = `Explícame el tema "${topic}" citando recursos del catálogo institucional.`;
+      let text = '';
+      await proxyStream(
+        `/chats/${chatId}/messages`,
+        { content: prompt },
+        (token) => {
+          text += token;
+          setResponse(text);
+        },
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al consultar al tutor');
     }
     setLoading(false);
   }
@@ -51,6 +55,7 @@ export default function TutorPage() {
           <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej: machine learning, SQL..." required />
           <Button type="submit" disabled={loading}>{loading ? '...' : 'Preguntar'}</Button>
         </form>
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       </Card>
       {response && (
         <Card>

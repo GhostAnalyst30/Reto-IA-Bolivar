@@ -25,9 +25,12 @@ class AuthKeyCreate(BaseModel):
 @router.get("/requests")
 async def list_requests(admin: dict = Depends(require_admin)):
     sb = get_supabase()
-    result = sb.table("registration_requests").select(
-        "*, users(full_name, email), institutions(name)"
-    ).eq("status", "pending").order("created_at").execute()
+    query = sb.table("registration_requests").select(
+        "*, users!registration_requests_user_id_fkey(full_name, email), institutions(name)"
+    ).eq("status", "pending")
+    if admin.get("institution_id"):
+        query = query.eq("institution_id", admin["institution_id"])
+    result = query.order("created_at").execute()
     return result.data or []
 
 
@@ -39,6 +42,9 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
     data = req.data
+    if admin.get("institution_id") and data["institution_id"] != admin["institution_id"]:
+        raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
+
     now = datetime.now(timezone.utc).isoformat()
 
     sb.table("users").update({
@@ -55,11 +61,7 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
     }).eq("id", request_id).execute()
 
     if data.get("auth_key_id"):
-        key = sb.table("role_auth_keys").select("uses_count").eq("id", data["auth_key_id"]).single().execute()
-        if key.data:
-            sb.table("role_auth_keys").update({
-                "uses_count": key.data["uses_count"] + 1,
-            }).eq("id", data["auth_key_id"]).execute()
+        pass  # uses_count incremented at registration time
 
     return {"status": "approved"}
 
@@ -68,8 +70,11 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
 async def reject_request(request_id: str, body: RejectBody, admin: dict = Depends(require_admin)):
     sb = get_supabase()
     req = sb.table("registration_requests").select("*").eq("id", request_id).single().execute()
-    if not req.data:
+    if not req.data or req.data["status"] != "pending":
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+    if admin.get("institution_id") and req.data["institution_id"] != admin["institution_id"]:
+        raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
     sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", req.data["user_id"]).execute()
@@ -130,7 +135,9 @@ async def list_security_events(admin: dict = Depends(require_admin)):
 @router.get("/sessions")
 async def list_sessions(admin: dict = Depends(require_admin)):
     sb = get_supabase()
-    result = sb.table("user_sessions").select("*, users(full_name, email)").eq("is_active", True).execute()
+    result = sb.table("user_sessions").select(
+        "*, users!user_sessions_user_id_fkey(full_name, email)"
+    ).eq("is_active", True).execute()
     return result.data or []
 
 

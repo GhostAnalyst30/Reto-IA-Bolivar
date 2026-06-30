@@ -60,8 +60,11 @@ export default function PendingApprovalPage() {
             Un administrador revisará tu solicitud. Recibirás acceso al portal una vez aprobada.
           </p>
         )}
-        <div className="mt-8 flex justify-center gap-4">
+        <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Button variant="ghost" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Cerrar sesión</Button>
+          {isRejected && (
+            <Button href="/register/student" variant="secondary">Volver a registrarse</Button>
+          )}
           <Button href="/" variant="secondary">Volver al inicio</Button>
         </div>
       </Card>

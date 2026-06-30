@@ -1,9 +1,11 @@
 """Registration routes."""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Header
 from pydantic import BaseModel, EmailStr
 from core.supabase_client import get_supabase
 from core.auth_keys import verify_auth_key, is_key_valid
 from core.security_monitor import log_security_event
+from core.security import get_current_user
+from core.config import settings
 
 router = APIRouter(tags=["register"])
 
@@ -24,6 +26,43 @@ class InstitutionalRegister(BaseModel):
     auth_key: str
 
 
+def _assert_self(body_user_id: str, user: dict) -> None:
+    if body_user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="user_id no coincide con la sesión")
+
+
+def _validate_institution(sb, institution_id: str) -> None:
+    inst = sb.table("institutions").select("id").eq("id", institution_id).eq("is_active", True).single().execute()
+    if not inst.data:
+        raise HTTPException(status_code=400, detail="Institución inválida o inactiva")
+
+
+async def _verify_register_caller(
+    body_user_id: str,
+    body_email: str,
+    authorization: str | None,
+    x_internal_register_key: str | None,
+) -> None:
+    if authorization and authorization.startswith("Bearer "):
+        user = await get_current_user(authorization)
+        _assert_self(body_user_id, user)
+        return
+
+    if (
+        x_internal_register_key
+        and settings.internal_register_key
+        and x_internal_register_key == settings.internal_register_key
+    ):
+        sb = get_supabase()
+        auth_resp = sb.auth.admin.get_user_by_id(body_user_id)
+        auth_user = auth_resp.user if auth_resp else None
+        if not auth_user or auth_user.email.lower() != body_email.lower():
+            raise HTTPException(status_code=403, detail="Usuario no verificado")
+        return
+
+    raise HTTPException(status_code=401, detail="Missing token")
+
+
 @router.get("/institutions")
 async def list_institutions():
     try:
@@ -39,14 +78,23 @@ async def list_institutions():
 
 
 @router.post("/register/student")
-async def register_student(body: StudentRegister, request: Request):
+async def register_student(
+    body: StudentRegister,
+    authorization: str | None = Header(None),
+    x_internal_register_key: str | None = Header(None, alias="X-Internal-Register-Key"),
+):
+    await _verify_register_caller(body.user_id, body.email, authorization, x_internal_register_key)
     sb = get_supabase()
-    sb.table("users").update({
+    _validate_institution(sb, body.institution_id)
+
+    sb.table("users").upsert({
+        "id": body.user_id,
+        "email": body.email,
         "full_name": body.full_name,
         "institution_id": body.institution_id,
         "role": "student",
         "status": "pending",
-    }).eq("id", body.user_id).execute()
+    }, on_conflict="id").execute()
 
     sb.table("registration_requests").upsert({
         "user_id": body.user_id,
@@ -59,11 +107,20 @@ async def register_student(body: StudentRegister, request: Request):
 
 
 @router.post("/register/institutional")
-async def register_institutional(body: InstitutionalRegister, request: Request):
+async def register_institutional(
+    body: InstitutionalRegister,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_internal_register_key: str | None = Header(None, alias="X-Internal-Register-Key"),
+):
+    await _verify_register_caller(body.user_id, body.email, authorization, x_internal_register_key)
+
     if body.requested_role not in ("area_head", "dean", "vice_president", "rector"):
         raise HTTPException(status_code=400, detail="Rol inválido")
 
     sb = get_supabase()
+    _validate_institution(sb, body.institution_id)
+
     keys = sb.table("role_auth_keys").select("*").eq(
         "institution_id", body.institution_id
     ).eq("role", body.requested_role).is_("revoked_at", "null").execute()
@@ -84,12 +141,18 @@ async def register_institutional(body: InstitutionalRegister, request: Request):
         )
         raise HTTPException(status_code=403, detail="Clave de autorización inválida o expirada")
 
-    sb.table("users").update({
+    sb.table("role_auth_keys").update({
+        "uses_count": matched_key["uses_count"] + 1,
+    }).eq("id", matched_key["id"]).execute()
+
+    sb.table("users").upsert({
+        "id": body.user_id,
+        "email": body.email,
         "full_name": body.full_name,
         "institution_id": body.institution_id,
         "role": body.requested_role,
         "status": "pending",
-    }).eq("id", body.user_id).execute()
+    }, on_conflict="id").execute()
 
     sb.table("registration_requests").upsert({
         "user_id": body.user_id,
