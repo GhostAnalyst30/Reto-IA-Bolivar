@@ -7,6 +7,7 @@ import { ROLE_LABELS } from '@/lib/utils';
 import { Key, Copy } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
 import { createClient } from '@/lib/supabase/client';
+import { getSelectedInstitutionId } from '@/lib/institution-context';
 
 interface AuthKey {
   id: string;
@@ -33,12 +34,20 @@ export default function AuthKeysPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('users').select('institution_id').eq('id', user.id).single();
-        if (profile?.institution_id) setInstitutionId(profile.institution_id);
+        const { data: profile } = await supabase.from('users').select('institution_id, role').eq('id', user.id).single();
+        const inst = profile?.institution_id || getSelectedInstitutionId() || '';
+        if (inst) setInstitutionId(inst);
       }
       await load();
     }
     init();
+    const onChange = () => {
+      const inst = getSelectedInstitutionId();
+      if (inst) setInstitutionId(inst);
+      load();
+    };
+    window.addEventListener('institution-context-changed', onChange);
+    return () => window.removeEventListener('institution-context-changed', onChange);
   }, []);
 
   async function load() {

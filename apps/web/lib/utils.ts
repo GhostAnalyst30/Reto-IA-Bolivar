@@ -38,3 +38,25 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrador institucional',
   platform_admin: 'Administrador de plataforma',
 };
+
+export function isPlatformAdmin(role: string): boolean {
+  return role === PLATFORM_ADMIN_ROLE;
+}
+
+/** Navegación completa para admin@bolivar.ia.com */
+export const PLATFORM_FULL_NAV = [
+  { href: '/platform/dashboard', label: 'Dashboard plataforma' },
+  { href: '/platform/institutions', label: 'Instituciones' },
+  { href: '/platform/users', label: 'Usuarios' },
+  { href: '/institutional/analytics', label: 'Analítica' },
+  { href: '/institutional/prediction', label: 'Predicción' },
+  { href: '/institutional/documents', label: 'Documental' },
+  { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
+  { href: '/institutional/actions', label: 'Acciones' },
+  { href: '/institutional/director', label: 'Director de IA' },
+  { href: '/institutional/admin', label: 'Administración' },
+  { href: '/institutional/admin/requests', label: 'Solicitudes' },
+  { href: '/institutional/admin/auth-keys', label: 'Claves de rol' },
+  { href: '/institutional/admin/security', label: 'Seguridad' },
+  { href: '/institutional/admin/programs', label: 'Programas académicos' },
+] as const;

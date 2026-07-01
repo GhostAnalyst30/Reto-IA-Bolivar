@@ -1,6 +1,7 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
+import { appendInstitutionQuery } from '@/lib/institution-context';
 
 export class ProxyError extends Error {
   status: number;
@@ -19,14 +20,15 @@ export async function handleAuthError(status: number) {
 }
 
 export async function proxyJson<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api/proxy?path=${encodeURIComponent(path)}`, options);
+  const scopedPath = appendInstitutionQuery(path);
+  const res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, options);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     await handleAuthError(res.status);
+    const detail = (data as { detail?: string; error?: string }).detail
+      || (data as { error?: string }).error;
     throw new ProxyError(
-      (data as { detail?: string; error?: string }).detail
-        || (data as { error?: string }).error
-        || 'Error de API',
+      detail || `Error de API (${res.status})`,
       res.status
     );
   }
@@ -48,7 +50,8 @@ export async function proxyStream(
     ? { onToken: callbacks }
     : callbacks;
 
-  const res = await fetch(`/api/proxy?path=${encodeURIComponent(path)}`, {
+  const scopedPath = appendInstitutionQuery(path);
+  const res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -25,6 +25,12 @@ export default function AdminRequestsPage() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    const onChange = () => load();
+    window.addEventListener('institution-context-changed', onChange);
+    return () => window.removeEventListener('institution-context-changed', onChange);
+  }, []);
+
   async function load() {
     setLoading(true);
     try {

@@ -55,6 +55,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  const isPlatformAdmin = profile.role === PLATFORM_ADMIN_ROLE;
+
   if (profile.status === 'pending' || profile.status === 'rejected') {
     if (!path.startsWith('/pending-approval')) {
       return NextResponse.redirect(new URL('/pending-approval', request.url));
@@ -68,19 +70,23 @@ export async function middleware(request: NextRequest) {
 
   const portal = getPortalForRole(profile.role);
 
-  if (path.startsWith('/platform') && portal !== 'platform') {
+  if (path.startsWith('/platform') && !isPlatformAdmin) {
     return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
   }
 
-  if (path.startsWith('/student') && portal !== 'student') {
+  if (path.startsWith('/student') && portal !== 'student' && !isPlatformAdmin) {
     return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
   }
 
-  if (path.startsWith('/institutional') && portal !== 'institutional') {
+  if (path.startsWith('/institutional') && portal !== 'institutional' && !isPlatformAdmin) {
     return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
   }
 
-  if (path.startsWith('/institutional/admin') && profile.role !== 'admin') {
+  if (
+    path.startsWith('/institutional/admin')
+    && profile.role !== 'admin'
+    && !isPlatformAdmin
+  ) {
     return NextResponse.redirect(new URL('/institutional/analytics', request.url));
   }
 

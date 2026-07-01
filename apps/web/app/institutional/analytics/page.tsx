@@ -20,13 +20,33 @@ export default function AnalyticsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    proxyJson<Dashboard>('/institutional/analytics/dashboard')
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
+    function load() {
+      proxyJson<Dashboard>('/institutional/analytics/dashboard')
+        .then(setData)
+        .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
+    }
+    load();
+    const onInstChange = () => {
+      setData(null);
+      setError('');
+      load();
+    };
+    window.addEventListener('institution-context-changed', onInstChange);
+    return () => window.removeEventListener('institution-context-changed', onInstChange);
   }, []);
 
   if (error) return <p className="text-red-400">{error}</p>;
   if (!data) return <p className="text-zinc-500">Cargando estadísticas…</p>;
+  if (data.kpis.length === 0) {
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-2xl font-bold">Analítica institucional</h1>
+        <p className="text-zinc-500">
+          Seleccione una institución en el selector superior para ver estadísticas, o cree una institución desde el panel de plataforma.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-8rem)]">

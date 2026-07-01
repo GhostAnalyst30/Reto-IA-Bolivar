@@ -17,11 +17,18 @@ const STUDENT_PREFIXES = [
   '/vocational',
 ];
 
-const INSTITUTIONAL_PREFIXES = [
-  '/institutional',
-];
+const INSTITUTIONAL_PREFIXES = ['/institutional'];
+
+/** platform_admin tiene acceso completo a todas las rutas API del proxy */
+function isPlatformAdminFullAccess(path: string, role: string): boolean {
+  if (role !== PLATFORM_ADMIN_ROLE) return false;
+  if (path.includes('..') || path.startsWith('http')) return false;
+  return path.startsWith('/');
+}
 
 export function isPathAllowed(path: string, role: string): boolean {
+  if (isPlatformAdminFullAccess(path, role)) return true;
+
   if (path.includes('..') || path.startsWith('http')) return false;
   if (!path.startsWith('/')) return false;
 
@@ -34,19 +41,23 @@ export function isPathAllowed(path: string, role: string): boolean {
   }
 
   if (path.startsWith(`${REGISTER_PREFIX}/link-institution`)) {
-    return role === STUDENT_ROLE || role === 'student';
+    return role === STUDENT_ROLE;
   }
 
   if (path.startsWith(ADMIN_PREFIX)) {
-    return role === 'admin';
+    return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
   }
 
   if (INSTITUTIONAL_PREFIXES.some((p) => path.startsWith(p))) {
-    return role === 'admin' || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number]);
+    return (
+      role === PLATFORM_ADMIN_ROLE
+      || role === 'admin'
+      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
+    );
   }
 
   if (STUDENT_PREFIXES.some((p) => path.startsWith(p))) {
-    return role === STUDENT_ROLE;
+    return role === STUDENT_ROLE || role === PLATFORM_ADMIN_ROLE;
   }
 
   return false;

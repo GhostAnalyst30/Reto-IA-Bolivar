@@ -1,11 +1,11 @@
 """Admin routes for requests and auth keys."""
 import secrets
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
-from routes.deps import require_admin
+from routes.deps import require_admin, is_platform_admin, effective_institution_id, is_institution_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -23,12 +23,18 @@ class AuthKeyCreate(BaseModel):
 
 
 @router.get("/requests")
-async def list_requests(admin: dict = Depends(require_admin)):
+async def list_requests(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     sb = get_supabase()
     query = sb.table("registration_requests").select(
         "*, users!registration_requests_user_id_fkey(full_name, email), institutions(name)"
     ).eq("status", "pending")
-    if admin.get("institution_id"):
+    inst = effective_institution_id(admin, institution_id)
+    if inst:
+        query = query.eq("institution_id", inst)
+    elif admin.get("institution_id") and not is_platform_admin(admin):
         query = query.eq("institution_id", admin["institution_id"])
     result = query.order("created_at").execute()
     return result.data or []
@@ -42,8 +48,11 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
     data = req.data
-    if admin.get("institution_id") and data.get("institution_id") != admin["institution_id"]:
-        raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
+    if admin.get("institution_id") and not is_platform_admin(admin):
+        if data.get("institution_id") != admin["institution_id"]:
+            raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
+    elif is_platform_admin(admin) and admin.get("institution_id") is None:
+        pass  # platform admin global
 
     if not data.get("institution_id"):
         raise HTTPException(status_code=400, detail="La solicitud no tiene institución asignada")
@@ -80,8 +89,9 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
     if not req.data or req.data["status"] != "pending":
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
-    if admin.get("institution_id") and req.data.get("institution_id") != admin["institution_id"]:
-        raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
+    if admin.get("institution_id") and not is_platform_admin(admin):
+        if req.data.get("institution_id") != admin["institution_id"]:
+            raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
     sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", req.data["user_id"]).execute()
@@ -96,12 +106,18 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
 
 
 @router.get("/auth-keys")
-async def list_auth_keys(admin: dict = Depends(require_admin)):
+async def list_auth_keys(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     sb = get_supabase()
     query = sb.table("role_auth_keys").select(
         "id, institution_id, role, label, max_uses, uses_count, expires_at, revoked_at, created_at, institutions(name)"
     )
-    if admin.get("institution_id"):
+    inst = effective_institution_id(admin, institution_id)
+    if inst:
+        query = query.eq("institution_id", inst)
+    elif admin.get("institution_id") and not is_platform_admin(admin):
         query = query.eq("institution_id", admin["institution_id"])
     result = query.order("created_at", desc=True).execute()
     return result.data or []
@@ -112,8 +128,9 @@ async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_adm
     if body.role not in ("area_head", "dean", "vice_president", "rector"):
         raise HTTPException(status_code=400, detail="Rol inválido")
 
-    if admin.get("institution_id") and body.institution_id != admin["institution_id"]:
-        raise HTTPException(status_code=403, detail="No puede crear claves para otra institución")
+    if is_institution_admin(admin) and admin.get("institution_id"):
+        if body.institution_id != admin["institution_id"]:
+            raise HTTPException(status_code=403, detail="No puede crear claves para otra institución")
 
     plain_key = f"BOL-{body.role.upper()[:3]}-{secrets.token_urlsafe(8).upper()}"
     sb = get_supabase()
@@ -146,12 +163,23 @@ async def list_security_events(admin: dict = Depends(require_admin)):
 
 
 @router.get("/sessions")
-async def list_sessions(admin: dict = Depends(require_admin)):
+async def list_sessions(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     sb = get_supabase()
     query = sb.table("user_sessions").select(
         "*, users!user_sessions_user_id_fkey(full_name, email)"
     ).eq("is_active", True)
-    if admin.get("institution_id"):
+    inst = effective_institution_id(admin, institution_id)
+    if inst:
+        inst_users = sb.table("users").select("id").eq("institution_id", inst).execute()
+        user_ids = [u["id"] for u in inst_users.data or []]
+        if user_ids:
+            query = query.in_("user_id", user_ids)
+        else:
+            return []
+    elif admin.get("institution_id") and not is_platform_admin(admin):
         inst_users = sb.table("users").select("id").eq("institution_id", admin["institution_id"]).execute()
         user_ids = [u["id"] for u in inst_users.data or []]
         if user_ids:
@@ -181,9 +209,12 @@ class ProgramCreate(BaseModel):
 
 
 @router.get("/programs")
-async def admin_list_programs(admin: dict = Depends(require_admin)):
+async def admin_list_programs(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     sb = get_supabase()
-    inst = admin.get("institution_id")
+    inst = effective_institution_id(admin, institution_id)
     query = sb.table("academic_programs").select("*, program_curricula(*)")
     if inst:
         query = query.eq("institution_id", inst)
@@ -191,10 +222,14 @@ async def admin_list_programs(admin: dict = Depends(require_admin)):
 
 
 @router.post("/programs")
-async def admin_create_program(body: ProgramCreate, admin: dict = Depends(require_admin)):
-    inst = admin.get("institution_id")
+async def admin_create_program(
+    body: ProgramCreate,
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
+    inst = effective_institution_id(admin, institution_id)
     if not inst:
-        raise HTTPException(status_code=400, detail="Admin sin institución")
+        raise HTTPException(status_code=400, detail="Seleccione una institución")
     sb = get_supabase()
     result = sb.table("academic_programs").insert({
         "institution_id": inst,
@@ -225,13 +260,21 @@ async def admin_delete_program(program_id: str, admin: dict = Depends(require_ad
 
 
 @router.post("/scraper/run")
-async def run_scraper(admin: dict = Depends(require_admin)):
+async def run_scraper(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     from services.resource_scraper import search_external
-    results = await search_external("programación python", admin.get("institution_id"))
+    inst = effective_institution_id(admin, institution_id)
+    results = await search_external("programación python", inst)
     return {"indexed": len(results)}
 
 
 @router.get("/reports/weekly-data")
-async def weekly_report_data(admin: dict = Depends(require_admin)):
+async def weekly_report_data(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     from services.analytics_service import compute_dashboard
-    return compute_dashboard(admin)
+    inst = effective_institution_id(admin, institution_id)
+    return compute_dashboard({**admin, "institution_id": inst})

@@ -1,6 +1,24 @@
 """Shared dependencies."""
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from core.security import get_current_user
+
+PLATFORM_ADMIN = "platform_admin"
+INSTITUTIONAL_ROLES = frozenset({"area_head", "dean", "vice_president", "rector", "admin", PLATFORM_ADMIN})
+
+
+def is_platform_admin(user: dict) -> bool:
+    return user.get("role") == PLATFORM_ADMIN and user.get("status") == "approved"
+
+
+def is_institution_admin(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("status") == "approved"
+
+
+def effective_institution_id(user: dict, institution_id: str | None = None) -> str | None:
+    """Resuelve institución activa: query param para platform_admin, perfil para el resto."""
+    if is_platform_admin(user) and institution_id:
+        return institution_id
+    return user.get("institution_id")
 
 
 async def get_user_dep(user: dict = Depends(get_current_user)) -> dict:
@@ -22,16 +40,20 @@ async def require_student(user: dict = Depends(require_approved)) -> dict:
 async def require_institutional(user: dict = Depends(require_approved)) -> dict:
     if user.get("role") == "student":
         raise HTTPException(status_code=403, detail="Acceso institucional requerido")
+    if user.get("role") not in INSTITUTIONAL_ROLES:
+        raise HTTPException(status_code=403, detail="Acceso institucional requerido")
     return user
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") != "admin" or user.get("status") != "approved":
+    if user.get("status") != "approved":
+        raise HTTPException(status_code=403, detail="Cuenta no aprobada")
+    if not is_institution_admin(user) and not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Admin required")
     return user
 
 
 async def require_platform_admin(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") != "platform_admin" or user.get("status") != "approved":
+    if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Platform admin required")
     return user

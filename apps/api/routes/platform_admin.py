@@ -69,7 +69,7 @@ async def platform_list_users(
     limit: int = Query(100, le=500),
 ):
     sb = get_supabase()
-    query = sb.table("users").select("*, institutions(name)")
+    query = sb.table("users").select("*")
     if role:
         query = query.eq("role", role)
     if status:
@@ -77,7 +77,16 @@ async def platform_list_users(
     if institution_id:
         query = query.eq("institution_id", institution_id)
     result = query.order("created_at", desc=True).limit(limit).execute()
-    return result.data or []
+    users = result.data or []
+    inst_ids = {u["institution_id"] for u in users if u.get("institution_id")}
+    inst_map: dict[str, dict] = {}
+    if inst_ids:
+        inst_rows = sb.table("institutions").select("id, name").in_("id", list(inst_ids)).execute()
+        inst_map = {r["id"]: r for r in (inst_rows.data or [])}
+    for u in users:
+        iid = u.get("institution_id")
+        u["institutions"] = {"name": inst_map[iid]["name"]} if iid and iid in inst_map else None
+    return users
 
 
 @router.patch("/users/{user_id}")

@@ -1,4 +1,5 @@
-import { PlatformShell, PLATFORM_NAV } from '@/components/layout/PlatformShell';
+import { PlatformShell } from '@/components/layout/PlatformShell';
+import { PLATFORM_FULL_NAV } from '@/lib/utils';
 import { getProfile } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { PLATFORM_ADMIN_ROLE } from '@/lib/utils';
@@ -16,7 +17,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
       title="Administración de Plataforma"
       subtitle={profile.full_name || profile.email}
       role={profile.role}
-      nav={PLATFORM_NAV}
+      nav={PLATFORM_FULL_NAV}
     >
       {children}
     </PlatformShell>

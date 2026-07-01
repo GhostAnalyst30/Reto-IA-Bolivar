@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { cn, getProfilePath } from '@/lib/utils';
+import { cn, getProfilePath, isPlatformAdmin } from '@/lib/utils';
 import { LogOut, Menu, X, User } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { InstitutionSelector } from '@/components/layout/InstitutionSelector';
 
 interface NavItem { href: string; label: string }
 
@@ -14,7 +15,7 @@ interface PlatformShellProps {
   title: string;
   subtitle?: string;
   role: string;
-  nav: NavItem[];
+  nav: readonly NavItem[] | NavItem[];
   children: React.ReactNode;
 }
 
@@ -24,6 +25,7 @@ export function PlatformShell({ title, subtitle, nav, role, children }: Platform
   const [open, setOpen] = useState(false);
   const supabase = createClient();
   const profilePath = getProfilePath(role);
+  const showInstitutionSelector = isPlatformAdmin(role);
 
   async function logout() {
     await supabase.auth.signOut();
@@ -33,14 +35,14 @@ export function PlatformShell({ title, subtitle, nav, role, children }: Platform
   return (
     <div className="flex min-h-screen">
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-40 w-64 border-r border-brand-border bg-brand-surface transition-transform lg:translate-x-0',
+        'fixed inset-y-0 left-0 z-40 w-64 border-r border-brand-border bg-brand-surface transition-transform lg:translate-x-0 overflow-y-auto',
         open ? 'translate-x-0' : '-translate-x-full'
       )}>
         <div className="flex h-16 items-center justify-between border-b border-brand-border px-4">
           <Link href="/" className="font-display font-semibold">Bolívar<span className="text-brand-amber">IA</span></Link>
           <button type="button" aria-label="Cerrar menú" className="lg:hidden" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button>
         </div>
-        <nav className="p-4 space-y-1">
+        <nav className="p-4 space-y-1 pb-20">
           {nav.map((item) => (
             <Link
               key={item.href}
@@ -80,6 +82,7 @@ export function PlatformShell({ title, subtitle, nav, role, children }: Platform
             <h1 className="font-semibold">{title}</h1>
             {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
           </div>
+          {showInstitutionSelector && <InstitutionSelector />}
           <ThemeToggle />
         </header>
         <main className="flex-1 p-6">{children}</main>
@@ -88,8 +91,4 @@ export function PlatformShell({ title, subtitle, nav, role, children }: Platform
   );
 }
 
-export const PLATFORM_NAV: NavItem[] = [
-  { href: '/platform/dashboard', label: 'Dashboard' },
-  { href: '/platform/institutions', label: 'Instituciones' },
-  { href: '/platform/users', label: 'Usuarios' },
-];
+export { PLATFORM_FULL_NAV } from '@/lib/utils';
