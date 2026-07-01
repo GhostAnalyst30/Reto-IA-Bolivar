@@ -17,6 +17,7 @@ export default async function InstitutionalLayout({ children }: { children: Reac
       subtitle={profile.full_name || profile.email}
       nav={INSTITUTIONAL_NAV}
       isAdmin={profile.role === 'admin'}
+      role={profile.role}
     >
       {children}
     </PortalShell>

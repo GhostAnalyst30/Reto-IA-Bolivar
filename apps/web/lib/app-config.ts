@@ -3,9 +3,16 @@ export function getAppUrl() {
 }
 
 export function isDemoEmail(email: string): boolean {
-  return email.toLowerCase().endsWith('@utb.demo');
+  const lower = email.toLowerCase();
+  return lower.endsWith('@utb.demo') || lower.endsWith('@bolivar.ia.com');
 }
 
 export function getWeeklyReportEmail(): string {
   return process.env.WEEKLY_REPORT_EMAIL || 'ascendraemmanuel@gmail.com';
+}
+
+export function getPortalForSession(role: string): string {
+  if (role === 'platform_admin') return 'platform';
+  if (role === 'student') return 'student';
+  return 'institutional';
 }

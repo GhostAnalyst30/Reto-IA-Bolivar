@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Input, Label, Select, Badge } from '@/components/ui';
+import { Button, Card, Label, Select, Badge } from '@/components/ui';
+import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Key, Copy } from 'lucide-react';
+import { proxyJson } from '@/lib/proxy';
+import { createClient } from '@/lib/supabase/client';
 
 interface AuthKey {
   id: string;
@@ -20,36 +23,81 @@ export default function AuthKeysPage() {
   const [keys, setKeys] = useState<AuthKey[]>([]);
   const [newKey, setNewKey] = useState('');
   const [role, setRole] = useState('dean');
-  const [institutionId, setInstitutionId] = useState('a0000000-0000-4000-8000-000000000001');
-  const [loading, setLoading] = useState(false);
+  const [institutionId, setInstitutionId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    async function init() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('users').select('institution_id').eq('id', user.id).single();
+        if (profile?.institution_id) setInstitutionId(profile.institution_id);
+      }
+      await load();
+    }
+    init();
+  }, []);
 
   async function load() {
-    const res = await fetch('/api/proxy?path=/admin/auth-keys');
-    setKeys(await res.json());
+    setLoading(true);
+    try {
+      const data = await proxyJson<AuthKey[]>('/admin/auth-keys');
+      setKeys(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar claves');
+      setKeys([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function generate() {
-    setLoading(true);
-    const res = await fetch('/api/proxy?path=/admin/auth-keys', {
-      method: 'POST',
-      body: JSON.stringify({ institution_id: institutionId, role, label: `Clave ${ROLE_LABELS[role]}`, max_uses: 5 }),
-    });
-    const data = await res.json();
-    if (data.auth_key) setNewKey(data.auth_key);
-    await load();
-    setLoading(false);
+    if (!institutionId) {
+      setError('No tiene institución asignada. Contacte al administrador de plataforma.');
+      return;
+    }
+    setActionLoading(true);
+    setError('');
+    try {
+      const data = await proxyJson<{ auth_key?: string }>('/admin/auth-keys', {
+        method: 'POST',
+        body: JSON.stringify({
+          institution_id: institutionId,
+          role,
+          label: `Clave ${ROLE_LABELS[role]}`,
+          max_uses: 5,
+        }),
+      });
+      if (data.auth_key) setNewKey(data.auth_key);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al generar');
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   async function revoke(id: string) {
-    await fetch(`/api/proxy?path=/admin/auth-keys/${id}`, { method: 'DELETE' });
-    load();
+    setActionLoading(true);
+    try {
+      await proxyJson(`/admin/auth-keys/${id}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al revocar');
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   return (
     <div className="space-y-6">
+      <ActionOverlay show={actionLoading} message="Procesando clave..." />
       <h2 className="text-2xl font-semibold">Claves de autorización</h2>
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <Card>
         <h3 className="font-semibold mb-4">Generar nueva clave</h3>
@@ -63,7 +111,9 @@ export default function AuthKeysPage() {
             </Select>
           </div>
           <div className="md:col-span-2 flex items-end">
-            <Button onClick={generate} disabled={loading}><Key className="mr-2 h-4 w-4" />{loading ? 'Generando...' : 'Generar clave'}</Button>
+            <Button onClick={generate} disabled={actionLoading || !institutionId}>
+              <Key className="mr-2 h-4 w-4" />{actionLoading ? 'Generando...' : 'Generar clave'}
+            </Button>
           </div>
         </div>
         {newKey && (
@@ -77,23 +127,28 @@ export default function AuthKeysPage() {
         )}
       </Card>
 
-      <div className="space-y-3">
-        {keys.map((k) => (
-          <Card key={k.id} className="flex justify-between items-center">
-            <div>
-              <p className="font-medium">{k.label || k.role}</p>
-              <div className="flex gap-2 mt-1">
-                <Badge>{ROLE_LABELS[k.role]}</Badge>
-                <Badge variant="default">{k.uses_count}/{k.max_uses} usos</Badge>
-                {k.revoked_at && <Badge variant="red">Revocada</Badge>}
+      {loading ? (
+        <Card><p className="text-zinc-500">Cargando claves...</p></Card>
+      ) : (
+        <div className="space-y-3">
+          {keys.length === 0 && <Card><p className="text-zinc-500">No hay claves generadas.</p></Card>}
+          {keys.map((k) => (
+            <Card key={k.id} className="flex justify-between items-center">
+              <div>
+                <p className="font-medium">{k.label || k.role}</p>
+                <div className="flex gap-2 mt-1">
+                  <Badge>{ROLE_LABELS[k.role]}</Badge>
+                  <Badge variant="default">{k.uses_count}/{k.max_uses} usos</Badge>
+                  {k.revoked_at && <Badge variant="red">Revocada</Badge>}
+                </div>
               </div>
-            </div>
-            {!k.revoked_at && (
-              <Button size="sm" variant="danger" onClick={() => revoke(k.id)}>Revocar</Button>
-            )}
-          </Card>
-        ))}
-      </div>
+              {!k.revoked_at && (
+                <Button size="sm" variant="danger" onClick={() => revoke(k.id)} disabled={actionLoading}>Revocar</Button>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Card, Badge, Input } from '@/components/ui';
+import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Check, X } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
@@ -11,7 +12,7 @@ interface Request {
   requested_role: string;
   created_at: string;
   users: { full_name: string; email: string };
-  institutions: { name: string };
+  institutions: { name: string } | null;
 }
 
 export default function AdminRequestsPage() {
@@ -19,10 +20,13 @@ export default function AdminRequestsPage() {
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => { load(); }, []);
 
   async function load() {
+    setLoading(true);
     try {
       const data = await proxyJson<Request[]>('/admin/requests');
       setRequests(Array.isArray(data) ? data : []);
@@ -30,19 +34,25 @@ export default function AdminRequestsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar solicitudes');
       setRequests([]);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function approve(id: string) {
+    setActionLoading(true);
     try {
       await proxyJson(`/admin/requests/${id}/approve`, { method: 'POST', body: '{}' });
-      load();
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al aprobar');
+    } finally {
+      setActionLoading(false);
     }
   }
 
   async function reject(id: string) {
+    setActionLoading(true);
     try {
       await proxyJson(`/admin/requests/${id}/reject`, {
         method: 'POST',
@@ -50,17 +60,22 @@ export default function AdminRequestsPage() {
       });
       setRejectId(null);
       setReason('');
-      load();
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al rechazar');
+    } finally {
+      setActionLoading(false);
     }
   }
 
   return (
     <div className="space-y-6">
+      <ActionOverlay show={actionLoading} message="Procesando solicitud..." />
       <h2 className="text-2xl font-semibold">Solicitudes pendientes</h2>
       {error && <p className="text-sm text-red-400">{error}</p>}
-      {requests.length === 0 ? (
+      {loading ? (
+        <Card><p className="text-zinc-500">Cargando solicitudes...</p></Card>
+      ) : requests.length === 0 ? (
         <Card><p className="text-zinc-500">No hay solicitudes pendientes.</p></Card>
       ) : (
         requests.map((r) => (
@@ -71,12 +86,16 @@ export default function AdminRequestsPage() {
                 <p className="text-sm text-zinc-500">{r.users?.email}</p>
                 <div className="mt-2 flex gap-2">
                   <Badge variant="amber">{ROLE_LABELS[r.requested_role]}</Badge>
-                  <Badge>{r.institutions?.name}</Badge>
+                  {r.institutions?.name && <Badge>{r.institutions.name}</Badge>}
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => approve(r.id)}><Check className="mr-1 h-4 w-4" />Aprobar</Button>
-                <Button size="sm" variant="danger" onClick={() => setRejectId(r.id)}><X className="mr-1 h-4 w-4" />Denegar</Button>
+                <Button size="sm" onClick={() => approve(r.id)} disabled={actionLoading}>
+                  <Check className="mr-1 h-4 w-4" />Aprobar
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => setRejectId(r.id)} disabled={actionLoading}>
+                  <X className="mr-1 h-4 w-4" />Denegar
+                </Button>
               </div>
             </div>
             {rejectId === r.id && (

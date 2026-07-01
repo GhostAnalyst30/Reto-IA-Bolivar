@@ -35,4 +35,6 @@ DROP FUNCTION IF EXISTS public.search_resources_text(text, integer);
 DROP FUNCTION IF EXISTS public.update_resource_search_vector();
 DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP FUNCTION IF EXISTS public.is_approved_user();
+DROP FUNCTION IF EXISTS public.is_platform_admin();
+DROP FUNCTION IF EXISTS public.is_any_admin();
 DROP FUNCTION IF EXISTS public.is_admin();

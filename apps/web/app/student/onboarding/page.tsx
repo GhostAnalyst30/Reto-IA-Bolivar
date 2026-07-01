@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Label, Select } from '@/components/ui';
 import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
-import { createClient } from '@/lib/supabase/client';
+import { ActionOverlay } from '@/components/ui/ActionOverlay';
+import { proxyJson } from '@/lib/proxy';
 
 interface Institution {
   id: string;
@@ -18,7 +19,6 @@ export default function StudentOnboardingPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     fetch('/api/institutions').then((r) => r.json()).then(setInstitutions).catch(() => {});
@@ -29,37 +29,39 @@ export default function StudentOnboardingPage() {
     if (!institutionId) return;
     setLoading(true);
     setError('');
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    const { error: upd } = await supabase.from('users').update({ institution_id: institutionId }).eq('id', user.id);
-    if (upd) {
-      setError('No se pudo vincular. Contacte al administrador.');
+    try {
+      await proxyJson('/register/link-institution', {
+        method: 'POST',
+        body: JSON.stringify({ institution_id: institutionId }),
+      });
+      router.push('/pending-approval');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo vincular. Contacte al administrador.');
       setLoading(false);
-      return;
     }
-    router.push('/student/chat');
   }
 
   return (
-    <BentoGrid cols={1} className="max-w-lg mx-auto">
-      <BentoCell>
-        <h1 className="text-xl font-semibold">Vincular institución</h1>
-        <p className="mt-2 text-sm text-zinc-500">Seleccione la Universidad Tecnológica de Bolívar u otra institución.</p>
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <Label htmlFor="inst">Institución</Label>
-            <Select id="inst" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} required>
-              <option value="">Seleccionar...</option>
-              {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </Select>
-          </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <Button type="submit" disabled={loading}>{loading ? 'Guardando…' : 'Vincular y continuar'}</Button>
-        </form>
-      </BentoCell>
-    </BentoGrid>
+    <>
+      <ActionOverlay show={loading} message="Enviando solicitud..." />
+      <BentoGrid cols={1} className="max-w-lg mx-auto">
+        <BentoCell>
+          <h1 className="text-xl font-semibold">Vincular institución</h1>
+          <p className="mt-2 text-sm text-zinc-500">Seleccione su institución. Un administrador revisará su solicitud.</p>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <Label htmlFor="inst">Institución</Label>
+              <Select id="inst" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} required>
+                <option value="">Seleccionar...</option>
+                {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </Select>
+            </div>
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <Button type="submit" disabled={loading}>{loading ? 'Enviando…' : 'Enviar solicitud'}</Button>
+          </form>
+        </BentoCell>
+      </BentoGrid>
+    </>
   );
 }

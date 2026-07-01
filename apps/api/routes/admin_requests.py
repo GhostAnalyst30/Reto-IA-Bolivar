@@ -42,8 +42,11 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
     data = req.data
-    if admin.get("institution_id") and data["institution_id"] != admin["institution_id"]:
+    if admin.get("institution_id") and data.get("institution_id") != admin["institution_id"]:
         raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
+
+    if not data.get("institution_id"):
+        raise HTTPException(status_code=400, detail="La solicitud no tiene institución asignada")
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -61,7 +64,11 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
     }).eq("id", request_id).execute()
 
     if data.get("auth_key_id"):
-        pass  # uses_count incremented at registration time
+        key_row = sb.table("role_auth_keys").select("uses_count").eq("id", data["auth_key_id"]).single().execute()
+        if key_row.data:
+            sb.table("role_auth_keys").update({
+                "uses_count": key_row.data["uses_count"] + 1,
+            }).eq("id", data["auth_key_id"]).execute()
 
     return {"status": "approved"}
 
@@ -73,7 +80,7 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
     if not req.data or req.data["status"] != "pending":
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
-    if admin.get("institution_id") and req.data["institution_id"] != admin["institution_id"]:
+    if admin.get("institution_id") and req.data.get("institution_id") != admin["institution_id"]:
         raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
@@ -104,6 +111,9 @@ async def list_auth_keys(admin: dict = Depends(require_admin)):
 async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_admin)):
     if body.role not in ("area_head", "dean", "vice_president", "rector"):
         raise HTTPException(status_code=400, detail="Rol inválido")
+
+    if admin.get("institution_id") and body.institution_id != admin["institution_id"]:
+        raise HTTPException(status_code=403, detail="No puede crear claves para otra institución")
 
     plain_key = f"BOL-{body.role.upper()[:3]}-{secrets.token_urlsafe(8).upper()}"
     sb = get_supabase()
@@ -138,9 +148,17 @@ async def list_security_events(admin: dict = Depends(require_admin)):
 @router.get("/sessions")
 async def list_sessions(admin: dict = Depends(require_admin)):
     sb = get_supabase()
-    result = sb.table("user_sessions").select(
+    query = sb.table("user_sessions").select(
         "*, users!user_sessions_user_id_fkey(full_name, email)"
-    ).eq("is_active", True).execute()
+    ).eq("is_active", True)
+    if admin.get("institution_id"):
+        inst_users = sb.table("users").select("id").eq("institution_id", admin["institution_id"]).execute()
+        user_ids = [u["id"] for u in inst_users.data or []]
+        if user_ids:
+            query = query.in_("user_id", user_ids)
+        else:
+            return []
+    result = query.execute()
     return result.data or []
 
 

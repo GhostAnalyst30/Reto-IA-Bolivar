@@ -20,7 +20,7 @@ export async function sendConfirmationEmail(params: {
 
   const html = `
     <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; color: #111;">
-      <h1 style="color: #C9A227;">Bolívar IA — UTB</h1>
+      <h1 style="color: #C9A227;">Bolívar IA</h1>
       <p>Hola <strong>${params.fullName}</strong>,</p>
       <p>Confirma tu correo para activar tu cuenta y continuar con la solicitud de acceso a la plataforma.</p>
       <p style="margin: 28px 0;">
@@ -41,7 +41,7 @@ export async function sendConfirmationEmail(params: {
   const { data, error } = await resend.emails.send({
     from,
     to: params.to,
-    subject: 'Confirma tu cuenta — Bolívar IA UTB',
+    subject: 'Confirma tu cuenta — Bolívar IA',
     html,
   });
 
@@ -64,6 +64,74 @@ export async function sendWeeklyReportEmail(params: {
     to: params.to,
     subject: params.subject,
     html: params.html,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function sendProfileChangeEmail(params: {
+  to: string;
+  fullName: string;
+  changes: string[];
+}) {
+  if (isDemoEmail(params.to)) {
+    console.warn('[email] Skip demo account:', params.to);
+    return { id: 'skipped-demo' };
+  }
+
+  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const changesList = params.changes.map((c) => `<li>${c}</li>`).join('');
+  const html = `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #C9A227;">Bolívar IA</h1>
+      <p>Hola <strong>${params.fullName}</strong>,</p>
+      <p>Se actualizó tu perfil en la plataforma:</p>
+      <ul>${changesList}</ul>
+      <p style="font-size: 12px; color: #888;">Si no realizaste este cambio, contacta al administrador.</p>
+    </div>
+  `;
+
+  if (!resend) {
+    console.warn('[email] Profile change (dev):', params.changes);
+    return { id: 'dev-log' };
+  }
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: params.to,
+    subject: 'Cambio en tu perfil — Bolívar IA',
+    html,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function sendPasswordChangeEmail(params: { to: string; fullName: string }) {
+  if (isDemoEmail(params.to)) {
+    console.warn('[email] Skip demo account:', params.to);
+    return { id: 'skipped-demo' };
+  }
+
+  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const html = `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #C9A227;">Bolívar IA</h1>
+      <p>Hola <strong>${params.fullName}</strong>,</p>
+      <p>Tu contraseña fue actualizada correctamente.</p>
+      <p style="font-size: 12px; color: #888;">Si no realizaste este cambio, contacta al administrador de inmediato.</p>
+    </div>
+  `;
+
+  if (!resend) {
+    console.warn('[email] Password change (dev):', params.to);
+    return { id: 'dev-log' };
+  }
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: params.to,
+    subject: 'Contraseña actualizada — Bolívar IA',
+    html,
   });
   if (error) throw new Error(error.message);
   return data;

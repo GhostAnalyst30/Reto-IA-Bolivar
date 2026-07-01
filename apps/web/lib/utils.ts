@@ -7,17 +7,26 @@ export function cn(...inputs: ClassValue[]) {
 
 export const INSTITUTIONAL_ROLES = ['area_head', 'dean', 'vice_president', 'rector', 'admin'] as const;
 export const STUDENT_ROLE = 'student';
+export const PLATFORM_ADMIN_ROLE = 'platform_admin';
 
-export function getPortalForRole(role: string): 'student' | 'institutional' | null {
+export function getPortalForRole(role: string): 'student' | 'institutional' | 'platform' | null {
+  if (role === PLATFORM_ADMIN_ROLE) return 'platform';
   if (role === STUDENT_ROLE) return 'student';
   if (INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])) return 'institutional';
   return null;
 }
 
 export function getDefaultPath(role: string): string {
+  if (role === PLATFORM_ADMIN_ROLE) return '/platform/dashboard';
   if (role === STUDENT_ROLE) return '/student/chat';
   if (role === 'admin') return '/institutional/admin';
   return '/institutional/analytics';
+}
+
+export function getProfilePath(role: string): string {
+  if (role === PLATFORM_ADMIN_ROLE) return '/platform/profile';
+  if (role === STUDENT_ROLE) return '/student/profile';
+  return '/institutional/profile';
 }
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -26,5 +35,6 @@ export const ROLE_LABELS: Record<string, string> = {
   dean: 'Decano',
   vice_president: 'Vicerrector',
   rector: 'Rector',
-  admin: 'Administrador',
+  admin: 'Administrador institucional',
+  platform_admin: 'Administrador de plataforma',
 };

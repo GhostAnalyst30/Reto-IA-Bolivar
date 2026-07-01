@@ -29,3 +29,9 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "admin" or user.get("status") != "approved":
         raise HTTPException(status_code=403, detail="Admin required")
     return user
+
+
+async def require_platform_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "platform_admin" or user.get("status") != "approved":
+        raise HTTPException(status_code=403, detail="Platform admin required")
+    return user

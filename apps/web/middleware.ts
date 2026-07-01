@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { getDefaultPath, getPortalForRole, INSTITUTIONAL_ROLES } from '@/lib/utils';
+import { getDefaultPath, getPortalForRole, PLATFORM_ADMIN_ROLE } from '@/lib/utils';
 
 const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback', '/quienes-somos', '/terminos', '/forgot-password', '/reset-password'];
 const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval', '/forgot-password', '/reset-password'];
@@ -47,7 +47,7 @@ export async function middleware(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('role, status')
+    .select('role, status, institution_id')
     .eq('id', user.id)
     .single();
 
@@ -68,6 +68,10 @@ export async function middleware(request: NextRequest) {
 
   const portal = getPortalForRole(profile.role);
 
+  if (path.startsWith('/platform') && portal !== 'platform') {
+    return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
+  }
+
   if (path.startsWith('/student') && portal !== 'student') {
     return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
   }
@@ -78,6 +82,16 @@ export async function middleware(request: NextRequest) {
 
   if (path.startsWith('/institutional/admin') && profile.role !== 'admin') {
     return NextResponse.redirect(new URL('/institutional/analytics', request.url));
+  }
+
+  if (
+    profile.role === 'student' &&
+    profile.status === 'approved' &&
+    !profile.institution_id &&
+    !path.startsWith('/student/onboarding') &&
+    !path.startsWith('/student/profile')
+  ) {
+    return NextResponse.redirect(new URL('/student/onboarding', request.url));
   }
 
   return response;

@@ -11,7 +11,7 @@ export class ProxyError extends Error {
 }
 
 export async function handleAuthError(status: number) {
-  if (status === 401 || status === 403) {
+  if (status === 401) {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = '/login';

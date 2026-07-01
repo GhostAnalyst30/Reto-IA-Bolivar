@@ -1,5 +1,5 @@
 """Registration routes."""
-from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from pydantic import BaseModel, EmailStr
 from core.supabase_client import get_supabase
 from core.auth_keys import verify_auth_key, is_key_valid
@@ -24,6 +24,10 @@ class InstitutionalRegister(BaseModel):
     institution_id: str
     requested_role: str
     auth_key: str
+
+
+class LinkInstitutionBody(BaseModel):
+    institution_id: str
 
 
 def _assert_self(body_user_id: str, user: dict) -> None:
@@ -93,13 +97,40 @@ async def register_student(
         "status": "pending",
     }, on_conflict="id").execute()
 
-    if body.institution_id:
-        sb.table("registration_requests").upsert({
-            "user_id": body.user_id,
-            "institution_id": body.institution_id,
-            "requested_role": "student",
-            "status": "pending",
-        }, on_conflict="user_id").execute()
+    sb.table("registration_requests").upsert({
+        "user_id": body.user_id,
+        "institution_id": body.institution_id,
+        "requested_role": "student",
+        "status": "pending",
+    }, on_conflict="user_id").execute()
+
+    return {"status": "pending", "message": "Solicitud enviada. Espera aprobación del administrador."}
+
+
+@router.post("/register/link-institution")
+async def link_institution(
+    body: LinkInstitutionBody,
+    user: dict = Depends(get_current_user),
+):
+    if user.get("role") != "student":
+        raise HTTPException(status_code=400, detail="Solo estudiantes pueden vincular institución")
+    if user.get("status") == "approved" and user.get("institution_id"):
+        raise HTTPException(status_code=400, detail="Ya tienes una institución vinculada")
+
+    sb = get_supabase()
+    _validate_institution(sb, body.institution_id)
+
+    sb.table("users").update({
+        "institution_id": body.institution_id,
+        "status": "pending",
+    }).eq("id", user["id"]).execute()
+
+    sb.table("registration_requests").upsert({
+        "user_id": user["id"],
+        "institution_id": body.institution_id,
+        "requested_role": "student",
+        "status": "pending",
+    }, on_conflict="user_id").execute()
 
     return {"status": "pending", "message": "Solicitud enviada. Espera aprobación del administrador."}
 
@@ -138,10 +169,6 @@ async def register_institutional(
             details={"role": body.requested_role, "email": body.email},
         )
         raise HTTPException(status_code=403, detail="Clave de autorización inválida o expirada")
-
-    sb.table("role_auth_keys").update({
-        "uses_count": matched_key["uses_count"] + 1,
-    }).eq("id", matched_key["id"]).execute()
 
     sb.table("users").upsert({
         "id": body.user_id,

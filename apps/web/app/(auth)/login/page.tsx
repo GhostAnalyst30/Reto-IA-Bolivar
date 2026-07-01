@@ -8,6 +8,7 @@ import { Button, Input, Label, Select } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { BentoCell } from '@/components/ui/BentoGrid';
 import { getDefaultPath } from '@/lib/utils';
+import { registerUserSession } from '@/lib/session-client';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -38,6 +39,7 @@ export default function LoginPage() {
     if (profile?.status === 'pending' || profile?.status === 'rejected') {
       router.push('/pending-approval');
     } else if (profile?.status === 'approved') {
+      await registerUserSession(profile.role);
       router.push(getDefaultPath(profile.role));
     } else {
       router.push('/pending-approval');

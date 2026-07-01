@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-from routes import register, admin_requests, student, institutional
+from routes import register, admin_requests, student, institutional, platform_admin, profile, sessions
 
 app = FastAPI(title="Reto IA Bolivar API", version="1.0.0")
 
@@ -19,6 +19,9 @@ app.include_router(register.router)
 app.include_router(admin_requests.router)
 app.include_router(student.router)
 app.include_router(institutional.router)
+app.include_router(platform_admin.router)
+app.include_router(profile.router)
+app.include_router(sessions.router)
 
 
 @app.get("/health")

@@ -20,7 +20,7 @@ MIGRATIONS = [
     SUPABASE / "002_rls_and_seed.sql",
 ]
 RESET = SUPABASE / "000_reset.sql"
-DEMO_SEED = SUPABASE / "003_seed_demo_utb.sql"
+DEMO_SEED = SUPABASE / "004_seed_demo_utb.sql"
 
 PROJECT_REF = "vecvvcryqhgrtulnqnxq"
 
@@ -107,8 +107,8 @@ def main():
 
         print(f"\nOK Completado — instituciones: {inst}, recursos: {res}, KPIs: {kpis}")
         print("\nSiguiente paso:")
-        print("  1. SEED_DEMO_PASSWORD=Demo2026! npx tsx scripts/seed-utb-users.ts")
-        print("  2. (opcional) Ejecutar supabase/003_seed_demo_utb.sql en SQL Editor")
+        print("  1. npx tsx scripts/seed-platform-admin.ts")
+        print("  2. (opcional demo UTB) npx tsx scripts/seed-utb-users.ts + 004_seed_demo_utb.sql")
     finally:
         conn.close()
 

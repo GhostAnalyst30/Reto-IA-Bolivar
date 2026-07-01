@@ -27,7 +27,7 @@ CREATE TABLE users (
   email TEXT NOT NULL,
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'student' CHECK (role IN (
-    'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin'
+    'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin', 'platform_admin'
   )),
   institution_id UUID REFERENCES institutions(id),
   faculty_id UUID REFERENCES faculties(id),
@@ -36,6 +36,9 @@ CREATE TABLE users (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE institutions
+  ADD COLUMN IF NOT EXISTS managed_by UUID REFERENCES users(id);
 
 CREATE TABLE resources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -99,7 +102,7 @@ CREATE TABLE user_sessions (
   ip_address INET,
   user_agent TEXT,
   device_label TEXT,
-  portal TEXT CHECK (portal IN ('student', 'institutional')),
+  portal TEXT CHECK (portal IN ('student', 'institutional', 'platform')),
   is_active BOOLEAN DEFAULT TRUE,
   last_activity_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -173,7 +176,7 @@ CREATE TABLE role_auth_keys (
 CREATE TABLE registration_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  institution_id UUID NOT NULL REFERENCES institutions(id),
+  institution_id UUID REFERENCES institutions(id),
   requested_role TEXT NOT NULL CHECK (requested_role IN (
     'student', 'area_head', 'dean', 'vice_president', 'rector'
   )),
