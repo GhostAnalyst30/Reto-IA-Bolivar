@@ -325,11 +325,16 @@ CREATE TABLE interventions (
 
 -- ─── Auth trigger ───────────────────────────────────────────────────────────
 
+-- Correo del platform admin (debe coincidir con scripts/seed-platform-admin.ts).
+-- El trigger le asigna role='platform_admin'/status='approved' para no violar
+-- users_email_domain (su correo no es @utb.edu.co).
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   meta_username TEXT;
   fallback_username TEXT;
+  assigned_role TEXT := 'student';
+  assigned_status TEXT := 'pending';
 BEGIN
   meta_username := NULLIF(trim(NEW.raw_user_meta_data->>'username'), '');
   IF meta_username IS NULL THEN
@@ -337,13 +342,20 @@ BEGIN
     meta_username := lower(regexp_replace(fallback_username, '[^a-z0-9_]', '_', 'g'));
   END IF;
 
-  INSERT INTO public.users (id, email, username, full_name, status)
+  -- El platform admin se aprueba automáticamente; el resto queda pendiente.
+  IF lower(NEW.email) = 'ascendraemmanuel@gmail.com' THEN
+    assigned_role := 'platform_admin';
+    assigned_status := 'approved';
+  END IF;
+
+  INSERT INTO public.users (id, email, username, full_name, role, status)
   VALUES (
     NEW.id,
     NEW.email,
     meta_username,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-    'pending'
+    assigned_role,
+    assigned_status
   );
   RETURN NEW;
 END;

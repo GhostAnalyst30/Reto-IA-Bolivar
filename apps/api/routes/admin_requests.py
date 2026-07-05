@@ -11,6 +11,13 @@ from routes.deps import require_admin, is_platform_admin, effective_institution_
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _admin_scope_institution(admin: dict) -> str | None:
+    """Institución que un admin puede administrar. None = acceso global (platform admin)."""
+    if is_platform_admin(admin):
+        return None
+    return admin.get("institution_id")
+
+
 class RejectBody(BaseModel):
     reason: str
 
@@ -167,6 +174,12 @@ async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_adm
 @router.delete("/auth-keys/{key_id}")
 async def revoke_auth_key(key_id: str, admin: dict = Depends(require_admin)):
     sb = get_supabase()
+    key = sb.table("role_auth_keys").select("id, institution_id").eq("id", key_id).single().execute()
+    if not key.data:
+        raise HTTPException(status_code=404, detail="Clave no encontrada")
+    scope = _admin_scope_institution(admin)
+    if scope is not None and key.data.get("institution_id") != scope:
+        raise HTTPException(status_code=403, detail="Clave fuera de su institución")
     now = datetime.now(timezone.utc).isoformat()
     sb.table("role_auth_keys").update({"revoked_at": now}).eq("id", key_id).execute()
     return {"status": "revoked"}
@@ -175,7 +188,15 @@ async def revoke_auth_key(key_id: str, admin: dict = Depends(require_admin)):
 @router.get("/security-events")
 async def list_security_events(admin: dict = Depends(require_admin)):
     sb = get_supabase()
-    result = sb.table("security_events").select("*").order("created_at", desc=True).limit(100).execute()
+    query = sb.table("security_events").select("*")
+    scope = _admin_scope_institution(admin)
+    if scope is not None:
+        inst_users = sb.table("users").select("id").eq("institution_id", scope).execute()
+        user_ids = [u["id"] for u in inst_users.data or []]
+        if not user_ids:
+            return []
+        query = query.in_("user_id", user_ids)
+    result = query.order("created_at", desc=True).limit(100).execute()
     return result.data or []
 
 
@@ -210,6 +231,14 @@ async def list_sessions(
 @router.post("/sessions/{session_id}/revoke")
 async def revoke_session(session_id: str, admin: dict = Depends(require_admin)):
     sb = get_supabase()
+    session = sb.table("user_sessions").select("id, user_id").eq("id", session_id).single().execute()
+    if not session.data:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    scope = _admin_scope_institution(admin)
+    if scope is not None:
+        owner = sb.table("users").select("institution_id").eq("id", session.data["user_id"]).single().execute()
+        if not owner.data or owner.data.get("institution_id") != scope:
+            raise HTTPException(status_code=403, detail="Sesión fuera de su institución")
     now = datetime.now(timezone.utc).isoformat()
     sb.table("user_sessions").update({
         "is_active": False,
@@ -258,9 +287,19 @@ async def admin_create_program(
     return result.data[0]
 
 
+def _assert_program_in_scope(sb, program_id: str, admin: dict) -> None:
+    program = sb.table("academic_programs").select("id, institution_id").eq("id", program_id).single().execute()
+    if not program.data:
+        raise HTTPException(status_code=404, detail="Programa no encontrado")
+    scope = _admin_scope_institution(admin)
+    if scope is not None and program.data.get("institution_id") != scope:
+        raise HTTPException(status_code=403, detail="Programa fuera de su institución")
+
+
 @router.patch("/programs/{program_id}")
 async def admin_update_program(program_id: str, body: ProgramCreate, admin: dict = Depends(require_admin)):
     sb = get_supabase()
+    _assert_program_in_scope(sb, program_id, admin)
     sb.table("academic_programs").update({
         "name": body.name,
         "description": body.description,
@@ -272,6 +311,7 @@ async def admin_update_program(program_id: str, body: ProgramCreate, admin: dict
 @router.delete("/programs/{program_id}")
 async def admin_delete_program(program_id: str, admin: dict = Depends(require_admin)):
     sb = get_supabase()
+    _assert_program_in_scope(sb, program_id, admin)
     sb.table("academic_programs").update({"is_active": False}).eq("id", program_id).execute()
     return {"deleted": True}
 

@@ -1,9 +1,3 @@
--- 004_seed_platform_admin.sql — Perfil platform admin
--- Ejecutar DESPUÉS de crear el usuario en Auth:
---   SEED_DEMO_PASSWORD=Immanuel3008 npx tsx scripts/seed-platform-admin.ts
---
--- Cuenta: username admin · ascendraemmanuel@gmail.com (rol platform_admin)
-
 UPDATE public.users SET
   role = 'platform_admin',
   status = 'approved',

@@ -94,8 +94,7 @@ export async function middleware(request: NextRequest) {
     profile.role === 'student' &&
     profile.status === 'approved' &&
     !path.startsWith('/student/onboarding') &&
-    !path.startsWith('/student/profile') &&
-    !path.startsWith('/student/twin')
+    !path.startsWith('/student/profile')
   ) {
     try {
       const { data: psych } = await supabase

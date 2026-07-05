@@ -1,5 +1,5 @@
--- 006_seed_accompaniment_utb.sql — Seed oportunidades, videos, links, riesgo demo
--- Requiere 004_seed_demo_utb.sql y usuarios seed
+-- 006_seed_accompaniment_utb.sql — Seed oportunidades, videos, links demo
+-- Requiere 003_seed_utb.sql (institución UTB). No depende de usuarios.
 
 -- Oportunidades demo UTB
 INSERT INTO opportunities (id, institution_id, type, title, description, requirements, area, tags, deadline, external_url) VALUES

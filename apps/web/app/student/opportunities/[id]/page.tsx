@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Card } from '@/components/ui';
-import { OpportunityGraph } from '@/components/opportunities/OpportunityGraph';
 import { proxyJson } from '@/lib/proxy';
 
 interface Opportunity {
@@ -65,8 +64,6 @@ export default function OpportunityDetailPage() {
           </div>
         )}
       </Card>
-
-      <OpportunityGraph opportunityTitle={opp.title} area={opp.area} />
 
       <div className="flex flex-wrap gap-3">
         {opp.saved_status !== 'applied' && (

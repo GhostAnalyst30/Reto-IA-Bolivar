@@ -62,9 +62,18 @@ async def get_opportunity(opp_id: str, user: dict = Depends(require_student)):
     return {**result.data, "saved_status": saved.data[0]["status"] if saved.data else None}
 
 
+def _assert_opportunity_in_institution(sb, opp_id: str, user: dict) -> None:
+    opp = sb.table("opportunities").select("id, institution_id").eq("id", opp_id).single().execute()
+    if not opp.data:
+        raise HTTPException(status_code=404)
+    if opp.data.get("institution_id") != user.get("institution_id"):
+        raise HTTPException(status_code=403)
+
+
 @router.post("/{opp_id}/save")
 async def save_opportunity(opp_id: str, user: dict = Depends(require_student)):
     sb = get_supabase()
+    _assert_opportunity_in_institution(sb, opp_id, user)
     sb.table("saved_opportunities").upsert({
         "user_id": user["id"],
         "opportunity_id": opp_id,
@@ -76,6 +85,7 @@ async def save_opportunity(opp_id: str, user: dict = Depends(require_student)):
 @router.post("/{opp_id}/apply")
 async def apply_opportunity(opp_id: str, user: dict = Depends(require_student)):
     sb = get_supabase()
+    _assert_opportunity_in_institution(sb, opp_id, user)
     sb.table("saved_opportunities").upsert({
         "user_id": user["id"],
         "opportunity_id": opp_id,
@@ -122,7 +132,17 @@ async def admin_create(
 
 
 @admin_router.delete("/{opp_id}")
-async def admin_delete(opp_id: str, user: dict = Depends(require_admin)):
+async def admin_delete(
+    opp_id: str,
+    user: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
     sb = get_supabase()
+    opp = sb.table("opportunities").select("id, institution_id").eq("id", opp_id).single().execute()
+    if not opp.data:
+        raise HTTPException(status_code=404)
+    inst = effective_institution_id(user, institution_id)
+    if inst and opp.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403, detail="Oportunidad fuera de su institución")
     sb.table("opportunities").update({"is_active": False}).eq("id", opp_id).execute()
     return {"deleted": True}

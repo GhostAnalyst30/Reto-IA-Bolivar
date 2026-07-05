@@ -37,9 +37,15 @@ SEED_DEMO_PASSWORD=Immanuel3008 npx tsx scripts/seed-platform-admin.ts
 ## Demo UTB (opcional)
 
 ```bash
+# 1. Crear los usuarios demo en Auth + tabla users (correos @utb.edu.co)
+SEED_DEMO_PASSWORD=Demo2026! npx tsx scripts/seed-utb-users.ts
+# 2. Aplicar seeds demo (claves de rol, oportunidades y recursos)
 python scripts/run_migrations.py --demo
-# Crear usuarios demo con correos @utb.edu.co en scripts/seed-utb-users.ts
 ```
+
+Ejecuta el script `seed-utb-users.ts` **antes** de `--demo`: los `UPDATE` de
+`005_seed_demo_utb.sql` ajustan rol/estado de los usuarios ya creados (el script
+ya los deja aprobados, por lo que este paso es idempotente).
 
 Clave demo personal: `DEMO-DEAN-2026` (ver `005_seed_demo_utb.sql`).
 

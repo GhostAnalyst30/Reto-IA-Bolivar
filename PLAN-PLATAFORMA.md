@@ -1,8 +1,10 @@
-# Plan de la Plataforma Inteligente — Reto IA Bolívar
+# Plan de la Plataforma Inteligente — UTB Te acompaña (Reto IA Bolívar)
+
+> ⚠️ **Documento de planificación original (histórico).** El producto final se llama **UTB Te acompaña**. Para el estado **actual y autoritativo** (rutas, cuentas, variables de entorno, migraciones), consulta **[DOCUMENTATION.md](DOCUMENTATION.md)** y **[NEW_IDEA.md](NEW_IDEA.md)**. Algunas decisiones aquí evolucionaron: el **login es por username + contraseña** (no email), el registro exige correos **`@utb.edu.co`**, la institución es **UTB** (slug `utb`), y la orientación vocacional quedó **fusionada en la encuesta psicométrica**.
 
 > **Plazo:** 3 semanas (21 días) · **Go-live:** Día 21  
 > **Stack:** Vercel (frontend) · Render (FastAPI) · Supabase (DB/Auth/Realtime/pgvector) · OpenRouter (modelos gratuitos)  
-> **Visión:** Ver [README.md](README.md) — plataforma institucional con portal estudiante y suite directivos.
+> **Visión:** Ver [NEW_IDEA.md](NEW_IDEA.md) — plataforma institucional con portal estudiante y suite directivos.
 
 ---
 
@@ -113,7 +115,7 @@ Headers OpenRouter: `HTTP-Referer` (URL Vercel), `X-Title` (nombre app).
 
 **Supabase**
 - Extensiones: `vector`, `uuid-ossp`
-- Auth: email/password; registro habilitado (no invite-only); redirect URLs Vercel prod + `https://*.vercel.app/**`
+- Auth: correo `@utb.edu.co` + password en registro; **login por username** (se resuelve el email internamente); redirect URLs Vercel prod + `https://*.vercel.app/**`
 - Trigger `on_auth_user_created` → `public.users` con `status = 'pending'` hasta aprobación admin
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY` (Vercel), `SUPABASE_SERVICE_ROLE_KEY` (solo Render)
 
@@ -229,7 +231,7 @@ flowchart TD
 | Paso | Detalle |
 |------|---------|
 | Ruta | `/register/student` |
-| Campos | email, password, nombre, `institution_id` (select de instituciones activas) |
+| Campos | email `@utb.edu.co`, **username** único, password, nombre (institución UTB asignada automáticamente) |
 | Rol asignado | `student` (solo efectivo tras aprobación) |
 | Tras signup | `users.status = pending`; solicitud en `registration_requests` |
 | UX | Pantalla `/pending-approval` con estado; re-login muestra mismo estado hasta decisión |
@@ -242,7 +244,7 @@ No requiere `auth_key`. Cualquier persona puede **solicitar** ser estudiante de 
 | Paso | Detalle |
 |------|---------|
 | Ruta | `/register/institutional` |
-| Campos | email, password, nombre, `institution_id`, `requested_role`, **`auth_key`** |
+| Campos | email `@utb.edu.co`, **username** único, password, nombre, `requested_role`, **`auth_key`** (institución UTB asignada automáticamente) |
 | Validación | FastAPI verifica `auth_key` contra `role_auth_keys` (hash bcrypt/argon2, no plaintext en DB) |
 | Reglas clave | Clave ligada a `institution_id` + `role`; puede tener `max_uses`, `expires_at`, revocación |
 | Tras signup | Igual que estudiante: `pending` + solicitud; **auth_key válida no implica auto-aprobación** |
@@ -272,7 +274,7 @@ Rutas en `/institutional/admin`:
 ### Rol `admin`
 
 - **No** se registra vía formulario público
-- Solo seed inicial (`admin@demo.uni`) o promoción manual por admin existente en panel
+- Solo seed inicial (gestor UTB `admin.demo@utb.edu.co`, username `admin_utb`) o creado por el platform admin al dar de alta la institución
 - Admin seed aprueba las primeras solicitudes y emite claves para decanos/rector demo
 
 ### Middleware y RLS con estado `pending`
@@ -300,7 +302,7 @@ RLS: políticas exigen `users.status = 'approved'` en todas las tablas de datos 
 | `POST` | `/admin/auth-keys` | Genera clave (retorna plaintext **una sola vez**) |
 | `DELETE` | `/admin/auth-keys/{id}` | Revoca clave |
 
-Rate limit registro: 5 req/h por IP; intentos de `auth_key` inválida → `invalid_auth_key` en `security_events`.
+Rate limit registro: planificado 5 req/h por IP (**pendiente de implementar**). Los intentos de `auth_key` inválida sí se registran hoy como `invalid_auth_key` en `security_events`.
 
 ---
 
@@ -418,11 +420,16 @@ Tipos: `failed_login`, `brute_force`, `unauthorized_access`, `injection_attempt`
 
 ## Esquema de base de datos
 
-### Migraciones
+### Migraciones (archivos reales en `supabase/`)
 
-- `supabase/migrations/001_schema.sql` — esquema completo (`institutions`, `users`, `resources`, `resource_embeddings`, `chats`, `messages`, etc.)
-- `supabase/migrations/002_security_sessions.sql` — `user_sessions`, `security_events`, `saved_resources`, `learning_paths`, RLS
-- `supabase/migrations/003_onboarding.sql` — `registration_requests`, `role_auth_keys`, columnas `status`/`institution_id` en `users`, RLS onboarding
+- `000_reset.sql` — elimina tablas, funciones y triggers
+- `001_schema.sql` — esquema completo (`institutions`, `users`, `registration_requests`, `role_auth_keys`, `user_sessions`, `security_events`, `resources`, `resource_embeddings`, `chats`, `messages`, `learning_paths`, `saved_resources`, onboarding, etc.) + trigger `handle_new_user`
+- `002_rls.sql` — RLS y políticas
+- `003_seed_utb.sql` — institución UTB, facultades, recursos base
+- `004_seed_platform_admin.sql` — perfil `platform_admin` (idempotente)
+- `005_seed_demo_utb.sql` / `006_seed_accompaniment_utb.sql` — seeds demo opcionales
+
+> Los bloques `CREATE TABLE` siguientes son ilustrativos del diseño; el esquema autoritativo vive en `supabase/001_schema.sql`.
 
 ### Instituciones y usuarios (`001` / `003`)
 
@@ -534,21 +541,23 @@ LANGUAGE sql STABLE AS $$
 $$;
 ```
 
-### Seed demo (`supabase/seed.sql`)
+### Seed demo (`scripts/seed-utb-users.ts` + `supabase/005_seed_demo_utb.sql`)
 
-| Usuario | Rol | Portal | Status |
-|---------|-----|--------|--------|
-| `estudiante@demo.uni` | `student` | `/student` | `approved` |
-| `decano@demo.uni` | `dean` | `/institutional` | `approved` |
-| `rector@demo.uni` | `rector` | `/institutional` | `approved` |
-| `admin@demo.uni` | `admin` | `/institutional/admin` | `approved` |
+Todos los correos demo usan el dominio `@utb.edu.co` (con `demo` antes de la `@` para excluirlos de correos transaccionales). Login por username.
+
+| Username | Email | Rol | Portal | Status |
+|----------|-------|-----|--------|--------|
+| `admin_utb` | `admin.demo@utb.edu.co` | `admin` | `/institutional/admin` | `approved` |
+| `rector` | `rector.demo@utb.edu.co` | `rector` | `/institutional/dashboard` | `approved` |
+| `decano` | `decano.demo@utb.edu.co` | `dean` | `/institutional/dashboard` | `approved` |
+| `estudiante01`…`10` | `estudianteNN.demo@utb.edu.co` | `student` | `/student/twin/summary` | `approved` |
 
 Incluir:
 
-- 1 institución demo (`Universidad Bolívar Demo`, slug `uni-bolivar-demo`)
-- 20 recursos pre-indexados, KPIs demo, 2-3 chats ejemplo
-- 2–3 `role_auth_keys` seed (hash precalculado) para probar registro institucional en staging
-- 1 solicitud `pending` de ejemplo para panel admin
+- 1 institución **UTB** (slug `utb`) — ya creada por `003_seed_utb.sql`
+- Recursos pre-indexados, KPIs demo, chats ejemplo
+- `role_auth_keys` seed para probar registro institucional en staging (p. ej. `DEMO-DEAN-2026`)
+- Solicitudes `pending` de ejemplo para el panel admin
 
 ---
 

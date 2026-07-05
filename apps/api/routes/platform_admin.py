@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, EmailStr
 from core.supabase_client import get_supabase
 from core.parallel import run_parallel
+from core.username import is_valid_username, normalize_username
 from routes.deps import require_platform_admin
 
 router = APIRouter(prefix="/platform", tags=["platform"])
@@ -16,6 +17,27 @@ class InstitutionCreate(BaseModel):
     manager_email: EmailStr
     manager_password: str
     manager_full_name: str
+    manager_username: str | None = None
+
+
+def _unique_username(sb, preferred: str) -> str:
+    """Deriva un username válido y único (login es por username→email)."""
+    cleaned = re.sub(r"[^a-z0-9_]", "", normalize_username(preferred or ""))
+    if not cleaned or not cleaned[0].isalpha():
+        cleaned = f"gestor{cleaned}"
+    cleaned = cleaned[:28]
+    while len(cleaned) < 3:
+        cleaned += "0"
+    base = cleaned
+    candidate = base
+    suffix = 0
+    while True:
+        if is_valid_username(candidate):
+            existing = sb.table("users").select("id").eq("username", candidate).limit(1).execute()
+            if not existing.data:
+                return candidate
+        suffix += 1
+        candidate = f"{base[:26]}{suffix}"
 
 
 class InstitutionPatch(BaseModel):
@@ -173,9 +195,13 @@ async def platform_create_institution(
         sb.table("institutions").delete().eq("id", institution["id"]).execute()
         raise HTTPException(status_code=500, detail="Error al crear usuario gestor")
 
+    preferred_username = body.manager_username or body.manager_email.split("@")[0]
+    manager_username = _unique_username(sb, preferred_username)
+
     sb.table("users").upsert({
         "id": manager_user.id,
         "email": body.manager_email,
+        "username": manager_username,
         "full_name": body.manager_full_name,
         "role": "admin",
         "status": "approved",
@@ -184,7 +210,7 @@ async def platform_create_institution(
 
     return {
         "institution": institution,
-        "manager": {"id": manager_user.id, "email": body.manager_email},
+        "manager": {"id": manager_user.id, "email": body.manager_email, "username": manager_username},
     }
 
 

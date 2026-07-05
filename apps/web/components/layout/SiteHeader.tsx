@@ -13,8 +13,8 @@ export function SiteHeader() {
           <UtbLogo variant="light" />
         </Link>
         <nav className="hidden items-center gap-6 md:flex">
-          <a href="#modulos" className="text-sm text-brand-blue-light hover:text-white">Módulos</a>
-          <a href="#experiencias" className="text-sm text-brand-blue-light hover:text-white">Experiencias</a>
+          <Link href="/#modulos" className="text-sm text-brand-blue-light hover:text-white">Módulos</Link>
+          <Link href="/#experiencias" className="text-sm text-brand-blue-light hover:text-white">Experiencias</Link>
           <Link href="/quienes-somos" className="text-sm text-brand-blue-light hover:text-white">Quiénes somos</Link>
           <Link href="/terminos#seguridad" className="text-sm text-brand-blue-light hover:text-white">Seguridad</Link>
         </nav>

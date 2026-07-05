@@ -159,10 +159,15 @@ async def complete_with_fallback(
             reasoning, answer = _parse_thinking(raw)
             if answer:
                 return reasoning, answer, name
+            logger.warning("LLM provider %s returned an empty answer", name)
         except Exception as exc:
             logger.warning("LLM provider %s failed: %s", name, exc)
             await asyncio.sleep(0.5)
 
+    logger.error(
+        "All LLM providers failed (%s tried); returning fallback message",
+        ", ".join(name for name, _ in providers) or "none",
+    )
     return "", FALLBACK_MESSAGE, "failed"
 
 

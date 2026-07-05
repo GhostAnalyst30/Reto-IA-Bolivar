@@ -1,14 +1,17 @@
 """Institutional routes."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.parallel import run_parallel
-from routes.deps import require_institutional, effective_institution_id
+from routes.deps import require_institutional, effective_institution_id, is_platform_admin
 from agents.director_agent import get_director_insights
 from services.analytics_service import compute_dashboard
 from services.risk_service import get_latest_risk_by_institution, persist_risk_reports, compute_student_risk
 
 router = APIRouter(prefix="/institutional", tags=["institutional"])
+logger = logging.getLogger(__name__)
 
 
 class InterventionCreate(BaseModel):
@@ -100,6 +103,8 @@ async def get_student_detail(
     if not student.data:
         raise HTTPException(status_code=404)
 
+    if not is_platform_admin(user) and not inst:
+        raise HTTPException(status_code=403, detail="Institución requerida")
     if inst and student.data.get("institution_id") != inst:
         raise HTTPException(status_code=403)
 
@@ -125,7 +130,8 @@ async def get_student_detail(
         fetch_profile, fetch_risk, fetch_interventions, fetch_chats
     )
 
-    risk_computed = risk.data[0] if risk.data else compute_student_risk(student_id, inst or "")
+    risk_institution = inst or student.data.get("institution_id") or ""
+    risk_computed = risk.data[0] if risk.data else compute_student_risk(student_id, risk_institution)
 
     prof = profile.data[0] if profile.data else {}
     twin = None
@@ -155,6 +161,13 @@ async def create_intervention(
     inst = effective_institution_id(user, institution_id)
     if not inst:
         raise HTTPException(status_code=400, detail="Institución requerida")
+    student = sb.table("users").select("id, institution_id").eq(
+        "id", body.student_id
+    ).eq("role", "student").single().execute()
+    if not student.data:
+        raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+    if student.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403, detail="Estudiante fuera de su institución")
     result = sb.table("interventions").insert({
         "student_id": body.student_id,
         "staff_id": user["id"],
@@ -175,6 +188,7 @@ async def director_chat(
     kpis = dashboard["kpis"]
     try:
         insights = await get_director_insights(kpis)
-    except Exception:
+    except Exception as exc:
+        logger.error("Director insights failed: %s", exc)
         insights = "Lo siento, el servidor no funciona"
     return {"insights": insights}

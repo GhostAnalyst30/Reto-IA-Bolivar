@@ -29,11 +29,19 @@ async def get_current_user(authorization: str | None = Header(None)) -> dict:
             raise HTTPException(status_code=401, detail="Invalid token")
 
     user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     sb = get_supabase()
-    profile = sb.table("users").select(
-        "id, email, full_name, role, status, institution_id, username, created_at"
-    ).eq("id", user_id).single().execute()
-    if not profile.data:
+    try:
+        profile = sb.table("users").select(
+            "id, email, full_name, role, status, institution_id, username, created_at"
+        ).eq("id", user_id).limit(1).execute()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Auth backend unavailable")
+
+    rows = profile.data or []
+    if not rows:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return profile.data
+    return rows[0]
 
