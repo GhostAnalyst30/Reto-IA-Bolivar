@@ -25,6 +25,7 @@ async def list_opportunities(
     user: dict = Depends(require_student),
     type: str | None = Query(None),
     area: str | None = Query(None),
+    deadline_before: str | None = Query(None),
 ):
     sb = get_supabase()
     inst = user.get("institution_id")
@@ -35,6 +36,8 @@ async def list_opportunities(
         query = query.eq("type", type)
     if area:
         query = query.eq("area", area)
+    if deadline_before:
+        query = query.lte("deadline", deadline_before)
     result = query.order("deadline").execute()
     return result.data or []
 

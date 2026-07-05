@@ -28,9 +28,13 @@ export default function TwinChatPage() {
   useEffect(() => { if (activeChat) loadMessages(activeChat); }, [activeChat]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  async function loadSelfHelp() {
+  async function loadSelfHelp(topic?: string) {
     try {
-      const data = await proxyJson<SelfHelp[]>('/self-help?topic=bienestar');
+      const query = (topic || 'bienestar').slice(0, 80);
+      let data = await proxyJson<SelfHelp[]>(`/self-help?topic=${encodeURIComponent(query)}`);
+      if ((!Array.isArray(data) || data.length === 0) && query !== 'bienestar') {
+        data = await proxyJson<SelfHelp[]>('/self-help?topic=bienestar');
+      }
       setSelfHelp(Array.isArray(data) ? data.slice(0, 4) : []);
     } catch { /* optional */ }
   }
@@ -98,7 +102,7 @@ export default function TwinChatPage() {
       setMessages((m) => [...m, { id: `e-${Date.now()}`, role: 'assistant', content: 'Lo siento, no pude responder. Intenta de nuevo.' }]);
     }
     setStreaming(false);
-    loadSelfHelp();
+    loadSelfHelp(content);
   }
 
   async function submitMood(score: number) {

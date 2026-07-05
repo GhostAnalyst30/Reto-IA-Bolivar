@@ -8,6 +8,20 @@ async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, em
   return found?.id ?? null;
 }
 
+/** Comprueba si un username ya pertenece a otro usuario, ANTES de crear nada. */
+export async function isUsernameTaken(username: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('users')
+    .select('id')
+    .eq('username', username.toLowerCase())
+    .limit(1);
+  if (error) {
+    throw new Error(error.message || 'No se pudo verificar el nombre de usuario');
+  }
+  return (data?.length ?? 0) > 0;
+}
+
 export async function createAuthUser(
   email: string,
   password: string,

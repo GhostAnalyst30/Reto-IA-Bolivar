@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from core.cache import TTLCache
 from core.parallel import run_parallel
 from core.supabase_client import get_supabase
+from services.risk_service import get_latest_risk_by_institution
 
 _dashboard_cache = TTLCache(ttl_seconds=60.0)
 
@@ -72,9 +73,19 @@ def _compute_dashboard_impl(inst: str) -> dict:
     retention = min(99.9, round(70 + (avg_progress * 0.25) + (active_7d / max(enrollment, 1) * 15), 1))
     at_risk = max(0, enrollment - active_7d)
 
+    avg_risk_score = 0.0
+    try:
+        risk_rows = get_latest_risk_by_institution(inst)
+        if risk_rows:
+            avg_risk_score = sum(r.get("risk_score", 0) for r in risk_rows) / len(risk_rows)
+            at_risk = sum(1 for r in risk_rows if r.get("risk_level") in ("alto", "moderado"))
+    except Exception:
+        pass
+
     kpis = [
         {"metric_name": "enrollment", "metric_value": enrollment, "metric_unit": "students", "period": "live"},
         {"metric_name": "active_users_7d", "metric_value": active_7d, "metric_unit": "users", "period": "7d"},
+        {"metric_name": "avg_risk_score", "metric_value": round(avg_risk_score, 1), "metric_unit": "riesgo promedio /100", "period": "live"},
         {"metric_name": "retention_rate", "metric_value": retention, "metric_unit": "percent", "period": "live"},
         {"metric_name": "chat_sessions", "metric_value": chats_count, "metric_unit": "chats", "period": "live"},
         {"metric_name": "messages_total", "metric_value": messages_count, "metric_unit": "messages", "period": "live"},

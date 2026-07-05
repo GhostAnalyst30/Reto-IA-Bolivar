@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   callBackendRegister,
   createAuthUser,
+  isUsernameTaken,
   sendConfirmLink,
 } from '@/lib/register-server';
 import { isUtbEmail, isValidUsername, normalizeUsername } from '@/lib/utb-auth';
@@ -24,6 +25,13 @@ export async function POST(request: NextRequest) {
     }
     if (!isValidUsername(normalizedUsername)) {
       return NextResponse.json({ error: 'Nombre de usuario inválido' }, { status: 400 });
+    }
+
+    if (await isUsernameTaken(normalizedUsername)) {
+      return NextResponse.json(
+        { error: 'El nombre de usuario ya está en uso' },
+        { status: 409 }
+      );
     }
 
     const userId = await createAuthUser(email, password, full_name, normalizedUsername);

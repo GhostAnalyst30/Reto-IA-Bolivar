@@ -22,21 +22,37 @@ const TYPE_LABELS: Record<string, string> = {
   evento: 'Evento',
 };
 
+function deadlineBefore(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const DEADLINE_OPTIONS: Record<string, number> = {
+  week: 7,
+  month: 30,
+  quarter: 90,
+};
+
 export default function OpportunitiesPage() {
   const [all, setAll] = useState<Opportunity[]>([]);
   const [recommended, setRecommended] = useState<Opportunity[]>([]);
   const [typeFilter, setTypeFilter] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
+  const [deadlineFilter, setDeadlineFilter] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     load();
-  }, [typeFilter, areaFilter]);
+  }, [typeFilter, areaFilter, deadlineFilter]);
 
   function load() {
     const params = new URLSearchParams();
     if (typeFilter) params.set('type', typeFilter);
     if (areaFilter) params.set('area', areaFilter);
+    if (deadlineFilter && DEADLINE_OPTIONS[deadlineFilter]) {
+      params.set('deadline_before', deadlineBefore(DEADLINE_OPTIONS[deadlineFilter]));
+    }
     const qs = params.toString() ? `?${params}` : '';
     Promise.all([
       proxyJson<Opportunity[]>(`/opportunities${qs}`),
@@ -80,6 +96,12 @@ export default function OpportunitiesPage() {
           <option value="bienestar">Bienestar</option>
           <option value="general">General</option>
           <option value="tecnologia">Tecnología</option>
+        </Select>
+        <Select value={deadlineFilter} onChange={(e) => setDeadlineFilter(e.target.value)}>
+          <option value="">Cualquier fecha límite</option>
+          <option value="week">Cierra esta semana</option>
+          <option value="month">Cierra este mes</option>
+          <option value="quarter">Próximos 3 meses</option>
         </Select>
       </div>
 

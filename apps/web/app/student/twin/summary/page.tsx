@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card } from '@/components/ui';
+import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
 import { Brain, Sparkles, BookOpen, Heart } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
@@ -47,6 +48,8 @@ export default function TwinSummaryPage() {
         <h1 className="font-display text-2xl font-bold">Mi Digital Twin</h1>
         <p className="text-zinc-500">Resumen de tu caracterización inicial UTB</p>
       </div>
+
+      <PrivacyBanner message="Este perfil es confidencial. El personal UTB solo puede verlo si activas el consentimiento en tu perfil." />
 
       <Card className="border-brand-amber/30 bg-brand-amber/5">
         <p className="text-lg leading-relaxed">{twin.summary_text}</p>
