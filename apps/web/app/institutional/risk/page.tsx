@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui';
+import { Button, LoadingState, EmptyState } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { proxyJson } from '@/lib/proxy';
+import { ShieldCheck } from 'lucide-react';
 
 interface RiskStudent {
   user_id: string;
@@ -25,8 +26,9 @@ const LEVEL_STYLES: Record<string, string> = {
 export default function RiskReportPage() {
   const [students, setStudents] = useState<RiskStudent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load().finally(() => setInitialLoading(false)); }, []);
 
   async function load() {
     const data = await proxyJson<RiskStudent[]>('/institutional/risk/students');
@@ -54,6 +56,15 @@ export default function RiskReportPage() {
 
       <PrivacyBanner message="Los datos del Digital Twin confidencial solo son visibles si el estudiante otorgó consentimiento." />
 
+      {initialLoading ? (
+        <LoadingState rows={3} />
+      ) : students.length === 0 ? (
+        <EmptyState
+          icon={<ShieldCheck className="h-8 w-8" />}
+          title="Sin estudiantes para evaluar"
+          description="No hay estudiantes registrados aún, o todavía no se ha calculado el riesgo. Usa 'Recalcular riesgo' para generar el reporte."
+        />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-brand-border">
         <table className="w-full text-sm">
           <thead className="border-b border-brand-border bg-brand-surface">
@@ -89,10 +100,8 @@ export default function RiskReportPage() {
             ))}
           </tbody>
         </table>
-        {students.length === 0 && (
-          <p className="p-8 text-center text-zinc-500">No hay estudiantes registrados o ejecuta recalcular riesgo.</p>
-        )}
       </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
-import { Button } from '@/components/ui';
+import { Button, LoadingState } from '@/components/ui';
 import { proxyJson } from '@/lib/proxy';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -37,7 +37,17 @@ export default function InstitutionalDashboardPage() {
     return () => window.removeEventListener('institution-context-changed', onInstChange);
   }, []);
 
-  if (!data) return <p className="text-zinc-500">Cargando dashboard...</p>;
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Dashboard UTB</h1>
+          <p className="text-zinc-500">Monitoreo de acompañamiento y prevención de deserción</p>
+        </div>
+        <LoadingState />
+      </div>
+    );
+  }
 
   if (data.kpis.length === 0) {
     return (

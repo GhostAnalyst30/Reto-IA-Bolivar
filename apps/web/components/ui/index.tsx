@@ -83,6 +83,70 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
   );
 }
 
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-sm bg-brand-border/50', className)} aria-hidden />;
+}
+
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <svg
+      className={cn('h-5 w-5 animate-spin text-brand-amber', className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      role="status"
+      aria-label="Cargando"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+    </svg>
+  );
+}
+
+/** Skeleton de tarjetas para estados de carga de listados/grids. */
+export function LoadingState({ rows = 6, className }: { rows?: number; className?: string }) {
+  return (
+    <div className={cn('grid gap-4 md:grid-cols-2 lg:grid-cols-3', className)}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="rounded-sm border border-brand-border bg-brand-surface p-6">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="mt-3 h-5 w-3/4" />
+          <Skeleton className="mt-2 h-3 w-full" />
+          <Skeleton className="mt-2 h-3 w-5/6" />
+          <Skeleton className="mt-4 h-8 w-24" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function EmptyState({
+  title,
+  description,
+  icon,
+  action,
+  className,
+}: {
+  title: string;
+  description?: string;
+  icon?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center rounded-sm border border-dashed border-brand-border bg-brand-surface/50 px-6 py-14 text-center',
+        className
+      )}
+    >
+      {icon && <div className="mb-3 text-brand-amber">{icon}</div>}
+      <p className="font-medium text-foreground">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-sm text-muted">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
 export function Badge({ children, variant = 'default', className }: { children: React.ReactNode; variant?: 'default' | 'amber' | 'green' | 'red'; className?: string }) {
   return (
     <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium', {

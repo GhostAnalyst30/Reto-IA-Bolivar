@@ -45,9 +45,17 @@ export async function POST(request: NextRequest) {
       auth_key,
     });
 
-    await sendConfirmLink(email, full_name);
+    // El envío de correo no debe abortar el registro: la cuenta ya existe y el
+    // usuario puede reenviar la confirmación desde la pantalla de verificación.
+    let emailSent = true;
+    try {
+      await sendConfirmLink(email, full_name);
+    } catch (mailErr) {
+      emailSent = false;
+      console.error('[register-institutional] No se pudo enviar la confirmación:', mailErr);
+    }
 
-    return NextResponse.json({ sent: true, user_id: userId });
+    return NextResponse.json({ sent: true, email_sent: emailSent, user_id: userId });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error al registrar';
     return NextResponse.json({ error: message }, { status: 500 });

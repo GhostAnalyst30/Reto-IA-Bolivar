@@ -6,6 +6,12 @@ const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institution
 const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval', '/forgot-password', '/reset-password'];
 
 export async function middleware(request: NextRequest) {
+  // API routes handle their own auth (see app/api/proxy). Skipping the Supabase
+  // session validation here removes a network round-trip from every API call.
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
+
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(
@@ -116,5 +122,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

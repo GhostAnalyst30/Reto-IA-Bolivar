@@ -5,16 +5,35 @@ import { isPathAllowed } from '@/lib/proxy-allowlist';
 
 export const runtime = 'nodejs';
 
-async function getAuth() {
-  const supabase = await createClient();
-  const [{ data: { user } }, { data: { session } }] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.auth.getSession(),
-  ]);
-  if (!user) return { token: undefined, role: '' };
+interface AuthContext {
+  token?: string;
+  role: string;
+}
 
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
-  return { token: session?.access_token, role: profile?.role || '' };
+// In-memory role cache (persists per server instance). Avoids a Supabase DB
+// round-trip on every proxied request; roles rarely change within a session.
+const ROLE_TTL_MS = 60_000;
+const roleCache = new Map<string, { role: string; expires: number }>();
+
+async function getAuth(): Promise<AuthContext> {
+  const supabase = await createClient();
+
+  // getSession() reads the token from cookies locally (no network round-trip).
+  // The FastAPI backend re-validates the JWT, so trusting it here for routing is safe.
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  const token = session?.access_token;
+  if (!userId || !token) return { token: undefined, role: '' };
+
+  const cached = roleCache.get(userId);
+  if (cached && cached.expires > Date.now()) {
+    return { token, role: cached.role };
+  }
+
+  const { data: profile } = await supabase.from('users').select('role').eq('id', userId).single();
+  const role = profile?.role || '';
+  roleCache.set(userId, { role, expires: Date.now() + ROLE_TTL_MS });
+  return { token, role };
 }
 
 function authHeaders(token: string | undefined): Record<string, string> {
@@ -25,33 +44,44 @@ function deny(message: string, status = 403) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function GET(request: NextRequest) {
-  const path = request.nextUrl.searchParams.get('path');
-  if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-
+async function authorize(path: string | null): Promise<
+  { ok: true; token: string | undefined; path: string } | { ok: false; response: NextResponse }
+> {
+  if (!path) return { ok: false, response: NextResponse.json({ error: 'path required' }, { status: 400 }) };
   const { token, role } = await getAuth();
-  if (!token) return deny('No autenticado', 401);
-  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+  if (!token) return { ok: false, response: deny('No autenticado', 401) };
+  if (!isPathAllowed(path, role)) return { ok: false, response: deny('Ruta no permitida') };
+  return { ok: true, token, path };
+}
 
-  const res = await fetch(`${API_URL}${path}`, { headers: authHeaders(token) });
+async function forward(method: string, path: string, token: string | undefined, body?: string) {
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: body !== undefined
+      ? { 'Content-Type': 'application/json', ...authHeaders(token) }
+      : authHeaders(token),
+    ...(body !== undefined ? { body } : {}),
+  });
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function POST(request: NextRequest) {
-  const path = request.nextUrl.searchParams.get('path');
-  if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
+export async function GET(request: NextRequest) {
+  const auth = await authorize(request.nextUrl.searchParams.get('path'));
+  if (!auth.ok) return auth.response;
+  return forward('GET', auth.path, auth.token);
+}
 
-  const { token, role } = await getAuth();
-  if (!token) return deny('No autenticado', 401);
-  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
+export async function POST(request: NextRequest) {
+  const auth = await authorize(request.nextUrl.searchParams.get('path'));
+  if (!auth.ok) return auth.response;
 
   const body = await request.text();
 
-  if (path.includes('/messages')) {
-    const res = await fetch(`${API_URL}${path}`, {
+  if (auth.path.includes('/messages')) {
+    const res = await fetch(`${API_URL}${auth.path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(auth.token) },
       body,
     });
     if (!res.ok) {
@@ -68,45 +98,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
-    body,
-  });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return forward('POST', auth.path, auth.token, body);
 }
 
 export async function PATCH(request: NextRequest) {
-  const path = request.nextUrl.searchParams.get('path');
-  if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-
-  const { token, role } = await getAuth();
-  if (!token) return deny('No autenticado', 401);
-  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
-
+  const auth = await authorize(request.nextUrl.searchParams.get('path'));
+  if (!auth.ok) return auth.response;
   const body = await request.text();
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
-    body,
-  });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return forward('PATCH', auth.path, auth.token, body);
 }
 
 export async function DELETE(request: NextRequest) {
-  const path = request.nextUrl.searchParams.get('path');
-  if (!path) return NextResponse.json({ error: 'path required' }, { status: 400 });
-
-  const { token, role } = await getAuth();
-  if (!token) return deny('No autenticado', 401);
-  if (!isPathAllowed(path, role)) return deny('Ruta no permitida');
-
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'DELETE',
-    headers: authHeaders(token),
-  });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  const auth = await authorize(request.nextUrl.searchParams.get('path'));
+  if (!auth.ok) return auth.response;
+  return forward('DELETE', auth.path, auth.token);
 }

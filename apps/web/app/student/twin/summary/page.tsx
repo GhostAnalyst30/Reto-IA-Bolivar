@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, Spinner } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
 import { Brain, Sparkles, BookOpen, Heart } from 'lucide-react';
@@ -27,7 +27,13 @@ export default function TwinSummaryPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="text-zinc-500">Cargando tu Digital Twin...</p>;
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 text-zinc-500">
+        <Spinner /> Cargando tu Digital Twin…
+      </div>
+    );
+  }
 
   if (!twin?.summary_text) {
     return (

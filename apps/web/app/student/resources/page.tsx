@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, Input } from '@/components/ui';
-import { Bookmark, BookmarkCheck, Play, ExternalLink, Search } from 'lucide-react';
+import { Button, Card, Input, LoadingState, EmptyState } from '@/components/ui';
+import { Bookmark, BookmarkCheck, Play, ExternalLink, Search, FolderOpen } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
 
 interface Resource {
@@ -25,8 +25,10 @@ export default function ResourcesPage() {
   const [searchQ, setSearchQ] = useState('');
   const [searchResults, setSearchResults] = useState<Resource[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     const type = tab === 'videos' ? 'youtube' : tab === 'links' ? 'link' : undefined;
     const qs = type ? `?type=${type}` : '';
     Promise.all([
@@ -37,7 +39,8 @@ export default function ResourcesPage() {
         setResources(Array.isArray(data) ? data : []);
         setSaved(new Set((Array.isArray(savedData) ? savedData : []).map((s) => s.resource_id)));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
+      .finally(() => setLoading(false));
   }, [tab]);
 
   async function doSearch(e: React.FormEvent) {
@@ -99,7 +102,9 @@ export default function ResourcesPage() {
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      {tab === 'videos' && (
+      {loading && tab !== 'search' && <LoadingState />}
+
+      {!loading && tab === 'videos' && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {displayList.map((r) => (
             <Card key={r.id} className="overflow-hidden">
@@ -123,7 +128,7 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {tab === 'links' && (
+      {!loading && tab === 'links' && (
         <div className="space-y-3">
           {['biblioteca', 'bienestar', 'normativa', 'empleo', 'autoayuda'].map((cat) => {
             const items = displayList.filter((r) => r.category === cat);
@@ -169,8 +174,12 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {displayList.length === 0 && tab !== 'search' && (
-        <p className="text-zinc-500">No hay recursos en esta categoría.</p>
+      {!loading && displayList.length === 0 && tab !== 'search' && (
+        <EmptyState
+          icon={<FolderOpen className="h-8 w-8" />}
+          title="No hay recursos en esta categoría"
+          description="Aún no se han publicado recursos aquí. Prueba el buscador o vuelve más tarde."
+        />
       )}
     </div>
   );

@@ -30,14 +30,26 @@ async function deliverEmail(params: {
     return { id: 'dev-log', link: params.link };
   }
 
+  const from = getFromAddress();
   const { data, error } = await resend.emails.send({
-    from: getFromAddress(),
+    from,
     to: params.to,
     subject: params.subject,
     html: params.html,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[email] Fallo de envío Resend:', params.to, error.message);
+    // El remitente de pruebas onboarding@resend.dev solo entrega al dueño de la cuenta.
+    if (from.includes('resend.dev')) {
+      console.error(
+        '[email] Usa un dominio verificado en RESEND_FROM_EMAIL para enviar a cualquier destinatario.'
+      );
+    }
+    throw new Error(error.message);
+  }
+
+  console.info('[email] Enviado a', params.to, '· id', data?.id);
   return { id: data?.id || 'sent', link: params.link };
 }
 

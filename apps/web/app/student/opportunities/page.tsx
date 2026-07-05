@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, Select } from '@/components/ui';
+import { Button, Card, Select, LoadingState, EmptyState } from '@/components/ui';
+import { Compass } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
 
 interface Opportunity {
@@ -41,12 +42,14 @@ export default function OpportunitiesPage() {
   const [areaFilter, setAreaFilter] = useState('');
   const [deadlineFilter, setDeadlineFilter] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     load();
   }, [typeFilter, areaFilter, deadlineFilter]);
 
   function load() {
+    setLoading(true);
     const params = new URLSearchParams();
     if (typeFilter) params.set('type', typeFilter);
     if (areaFilter) params.set('area', areaFilter);
@@ -62,7 +65,8 @@ export default function OpportunitiesPage() {
         setAll(allData);
         setRecommended(recData);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
+      .finally(() => setLoading(false));
   }
 
   return (
@@ -107,14 +111,21 @@ export default function OpportunitiesPage() {
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {all.map((o) => (
-          <OppCard key={o.id} opp={o} />
-        ))}
-      </div>
-      {all.length === 0 && !error && (
-        <p className="text-zinc-500">No hay oportunidades disponibles. Contacta a bienestar UTB.</p>
-      )}
+      {loading ? (
+        <LoadingState />
+      ) : all.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {all.map((o) => (
+            <OppCard key={o.id} opp={o} />
+          ))}
+        </div>
+      ) : !error ? (
+        <EmptyState
+          icon={<Compass className="h-8 w-8" />}
+          title="No hay oportunidades con estos filtros"
+          description="Prueba ajustando el tipo, el área o la fecha límite. Si no aparece nada, contacta a bienestar UTB."
+        />
+      ) : null}
     </div>
   );
 }

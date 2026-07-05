@@ -2,8 +2,14 @@ export function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
 }
 
-/** Omite envío a cuentas demo: local-part con "demo" en @utb.edu.co, o dominio @utb.demo. */
+/**
+ * Omite envío a cuentas demo: local-part con "demo" en @utb.edu.co, o dominio @utb.demo.
+ * Se puede desactivar globalmente con SKIP_DEMO_EMAILS=false para forzar el envío real
+ * (útil para verificar que los correos realmente llegan durante demos/pruebas).
+ */
 export function shouldSkipOutgoingEmail(email: string): boolean {
+  if ((process.env.SKIP_DEMO_EMAILS || '').toLowerCase() === 'false') return false;
+
   const lower = email.toLowerCase().trim();
   const at = lower.indexOf('@');
   if (at <= 0) return false;
