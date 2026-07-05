@@ -12,12 +12,13 @@ async def search_resources(query: str) -> list[dict]:
         result = sb.rpc("search_resources_text", {"search_query": query, "match_count": 20}).execute()
         if result.data:
             rows = result.data
-            ids = [r["id"] for r in rows if r.get("id")]
-            if ids:
-                urls = sb.table("resources").select("id, url").in_("id", ids).execute()
+            missing_url_ids = [r["id"] for r in rows if r.get("id") and not r.get("url")]
+            if missing_url_ids:
+                urls = sb.table("resources").select("id, url").in_("id", missing_url_ids).execute()
                 url_map = {u["id"]: u.get("url") for u in urls.data or []}
                 for row in rows:
-                    row["url"] = url_map.get(row["id"])
+                    if not row.get("url"):
+                        row["url"] = url_map.get(row["id"])
             return rows
     except Exception:
         pass

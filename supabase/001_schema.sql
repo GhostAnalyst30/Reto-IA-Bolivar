@@ -39,7 +39,6 @@ CREATE TABLE users (
   CONSTRAINT users_email_domain CHECK (
     role = 'platform_admin'
     OR email ILIKE '%@utb.edu.co'
-    OR email ILIKE '%@utb.demo'
   ),
   CONSTRAINT users_username_format CHECK (username ~ '^[a-z][a-z0-9_]{2,29}$')
 );
@@ -57,6 +56,7 @@ CREATE TABLE resources (
   url TEXT,
   topic TEXT,
   resource_type TEXT DEFAULT 'article',
+  category TEXT DEFAULT 'general',
   source TEXT,
   scraped_at TIMESTAMPTZ,
   search_vector TSVECTOR,
@@ -78,6 +78,7 @@ CREATE TABLE chats (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT DEFAULT 'Nueva conversación',
   context_resource_id UUID REFERENCES resources(id),
+  chat_type TEXT DEFAULT 'digital_twin' CHECK (chat_type IN ('digital_twin', 'tutor', 'learning')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -166,12 +167,12 @@ CREATE TABLE student_progress (
   UNIQUE(user_id, topic)
 );
 
--- ─── Onboarding ─────────────────────────────────────────────────────────────
+-- ─── Registration ───────────────────────────────────────────────────────────
 
 CREATE TABLE role_auth_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   institution_id UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('area_head', 'dean', 'vice_president', 'rector')),
+  role TEXT NOT NULL CHECK (role IN ('area_head', 'dean', 'vice_president', 'rector', 'admin')),
   key_hash TEXT NOT NULL,
   label TEXT,
   max_uses INT DEFAULT 1,
@@ -187,7 +188,7 @@ CREATE TABLE registration_requests (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   institution_id UUID REFERENCES institutions(id),
   requested_role TEXT NOT NULL CHECK (requested_role IN (
-    'student', 'area_head', 'dean', 'vice_president', 'rector'
+    'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin'
   )),
   status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
   auth_key_id UUID REFERENCES role_auth_keys(id),
@@ -224,19 +225,123 @@ CREATE TABLE program_curricula (
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ─── Acompañamiento UTB ─────────────────────────────────────────────────────
+
+CREATE TABLE student_profiles (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  student_id TEXT,
+  program TEXT,
+  semester INT,
+  contact_preference TEXT DEFAULT 'email',
+  twin_consent BOOLEAN DEFAULT FALSE,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE psychometric_assessments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  institution_id UUID NOT NULL REFERENCES institutions(id),
+  responses JSONB NOT NULL DEFAULT '[]',
+  status TEXT CHECK (status IN ('in_progress', 'completed')) DEFAULT 'in_progress',
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id)
+);
+
+CREATE TABLE digital_twin_profiles (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  interests TEXT[] DEFAULT '{}',
+  learning_style TEXT,
+  emotional_baseline TEXT,
+  summary_text TEXT,
+  traits JSONB DEFAULT '{}',
+  generated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE opportunities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  institution_id UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('beca', 'convocatoria', 'evento')),
+  title TEXT NOT NULL,
+  description TEXT,
+  requirements TEXT[] DEFAULT '{}',
+  area TEXT,
+  tags TEXT[] DEFAULT '{}',
+  deadline DATE,
+  external_url TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE saved_opportunities (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opportunity_id UUID NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'saved' CHECK (status IN ('saved', 'applied')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, opportunity_id)
+);
+
+CREATE TABLE support_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
+  reason TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'resolved')),
+  assigned_to UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE mood_checkins (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mood_score INT NOT NULL CHECK (mood_score BETWEEN 1 AND 5),
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE student_risk_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  institution_id UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
+  risk_level TEXT NOT NULL CHECK (risk_level IN ('bajo', 'moderado', 'alto')),
+  risk_score NUMERIC NOT NULL DEFAULT 0,
+  factors JSONB DEFAULT '[]',
+  computed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_risk_institution ON student_risk_reports(institution_id, computed_at DESC);
+CREATE INDEX idx_risk_user ON student_risk_reports(user_id, computed_at DESC);
+
+CREATE TABLE interventions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  staff_id UUID NOT NULL REFERENCES users(id),
+  institution_id UUID NOT NULL REFERENCES institutions(id),
+  type TEXT NOT NULL DEFAULT 'academica',
+  notes TEXT,
+  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ─── Auth trigger ───────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  meta_username TEXT;
+  fallback_username TEXT;
 BEGIN
+  meta_username := NULLIF(trim(NEW.raw_user_meta_data->>'username'), '');
+  IF meta_username IS NULL THEN
+    fallback_username := 'u' || substr(replace(NEW.id::text, '-', ''), 1, 29);
+    meta_username := lower(regexp_replace(fallback_username, '[^a-z0-9_]', '_', 'g'));
+  END IF;
+
   INSERT INTO public.users (id, email, username, full_name, status)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(
-      NULLIF(trim(NEW.raw_user_meta_data->>'username'), ''),
-      lower(regexp_replace(split_part(NEW.email, '@', 1), '[^a-z0-9_]', '_', 'g'))
-    ),
+    meta_username,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
     'pending'
   );

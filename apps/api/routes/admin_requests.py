@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
+from core.email_notify import notify_account_approved, notify_account_rejected
 from routes.deps import require_admin, is_platform_admin, effective_institution_id, is_institution_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -79,6 +80,14 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
                 "uses_count": key_row.data["uses_count"] + 1,
             }).eq("id", data["auth_key_id"]).execute()
 
+    user_row = sb.table("users").select("email, full_name").eq("id", data["user_id"]).single().execute()
+    if user_row.data and user_row.data.get("email"):
+        await notify_account_approved(
+            user_row.data["email"],
+            user_row.data.get("full_name") or user_row.data["email"].split("@")[0],
+            data["requested_role"],
+        )
+
     return {"status": "approved"}
 
 
@@ -101,6 +110,14 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
         "reviewed_by": admin["id"],
         "reviewed_at": now,
     }).eq("id", request_id).execute()
+
+    user_row = sb.table("users").select("email, full_name").eq("id", req.data["user_id"]).single().execute()
+    if user_row.data and user_row.data.get("email"):
+        await notify_account_rejected(
+            user_row.data["email"],
+            user_row.data.get("full_name") or user_row.data["email"].split("@")[0],
+            body.reason,
+        )
 
     return {"status": "rejected"}
 
@@ -125,7 +142,7 @@ async def list_auth_keys(
 
 @router.post("/auth-keys")
 async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_admin)):
-    if body.role not in ("area_head", "dean", "vice_president", "rector"):
+    if body.role not in ("area_head", "dean", "vice_president", "rector", "admin"):
         raise HTTPException(status_code=400, detail="Rol inválido")
 
     if is_institution_admin(admin) and admin.get("institution_id"):

@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
  * Seed platform admin via Supabase Admin API.
- * Usage: SEED_DEMO_PASSWORD=Demo2026! npx tsx scripts/seed-platform-admin.ts
+ * Usage: SEED_DEMO_PASSWORD=Immanuel3008 npx tsx scripts/seed-platform-admin.ts
  */
 import { createClient } from '@supabase/supabase-js';
 import { existsSync, readFileSync } from 'fs';
@@ -26,7 +26,7 @@ loadEnvFile('../apps/api/.env');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const password = process.env.SEED_DEMO_PASSWORD || 'Demo2026!';
+const password = process.env.SEED_DEMO_PASSWORD || 'Immanuel3008';
 const email = process.env.PLATFORM_ADMIN_EMAIL || 'ascendraemmanuel@gmail.com';
 const username = 'admin';
 

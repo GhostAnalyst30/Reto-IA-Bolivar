@@ -93,17 +93,6 @@ export async function middleware(request: NextRequest) {
   if (
     profile.role === 'student' &&
     profile.status === 'approved' &&
-    !profile.institution_id &&
-    !path.startsWith('/student/onboarding') &&
-    !path.startsWith('/student/profile')
-  ) {
-    return NextResponse.redirect(new URL('/student/onboarding', request.url));
-  }
-
-  if (
-    profile.role === 'student' &&
-    profile.status === 'approved' &&
-    profile.institution_id &&
     !path.startsWith('/student/onboarding') &&
     !path.startsWith('/student/profile') &&
     !path.startsWith('/student/twin')

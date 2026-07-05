@@ -27,7 +27,7 @@ export default function TerminosPage() {
               <li>Datos almacenados en Supabase (PostgreSQL) con cifrado en tránsito (TLS).</li>
               <li>Registro exclusivo con correo @utb.edu.co e identificador de usuario único.</li>
               <li>Row Level Security (RLS) limita el acceso por rol e institución.</li>
-              <li>Correos enviados vía Resend; cuentas demo @utb.demo no reciben correos.</li>
+              <li>Correos transaccionales enviados vía Resend a cualquier dirección registrada.</li>
             </ul>
           </BentoCell>
           <BentoCell>

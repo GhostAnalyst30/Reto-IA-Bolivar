@@ -6,21 +6,16 @@ import Link from 'next/link';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { UtbLogo } from '@/components/branding/UtbLogo';
-import { API_URL } from '@/lib/api';
 import { ROLE_LABELS } from '@/lib/utils';
 import { isUtbEmail, normalizeUsername } from '@/lib/utb-auth';
 
-interface Institution { id: string; name: string; }
-
-const ROLES = ['area_head', 'dean', 'vice_president', 'rector'] as const;
+const ROLES = ['area_head', 'dean', 'vice_president', 'rector', 'admin'] as const;
 
 export default function RegisterInstitutionalPage() {
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [institutionId, setInstitutionId] = useState('');
   const [role, setRole] = useState<string>('dean');
   const [authKey, setAuthKey] = useState('');
   const [error, setError] = useState('');
@@ -28,10 +23,6 @@ export default function RegisterInstitutionalPage() {
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const router = useRouter();
-
-  useEffect(() => {
-    fetch(`${API_URL}/institutions`).then((r) => r.json()).then(setInstitutions).catch(() => {});
-  }, []);
 
   const checkUsername = useCallback(async (value: string) => {
     const normalized = normalizeUsername(value);
@@ -77,7 +68,6 @@ export default function RegisterInstitutionalPage() {
           username: normalizeUsername(username),
           password,
           full_name: fullName,
-          institution_id: institutionId,
           requested_role: role,
           auth_key: authKey,
         }),
@@ -102,8 +92,10 @@ export default function RegisterInstitutionalPage() {
     <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4 py-12">
       <Card className="w-full max-w-md">
         <Link href="/" aria-label="Inicio"><UtbLogo /></Link>
-        <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Registro institucional</h1>
-        <p className="mt-2 text-sm text-muted">Requiere clave de autorización activa emitida por el administrador de plataforma.</p>
+        <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Registro personal UTB</h1>
+        <p className="mt-2 text-sm text-muted">
+          Para personal institucional UTB. Requiere clave de registro emitida por el administrador de plataforma.
+        </p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div><Label>Nombre completo</Label><Input value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div>
@@ -120,19 +112,12 @@ export default function RegisterInstitutionalPage() {
           <div><Label>Correo @utb.edu.co</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="director@utb.edu.co" required /></div>
           <div><Label htmlFor="password">Contraseña</Label><PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
           <div>
-            <Label>Institución</Label>
-            <Select value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} required>
-              <option value="">Seleccionar...</option>
-              {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </Select>
-          </div>
-          <div>
             <Label>Rol solicitado</Label>
             <Select value={role} onChange={(e) => setRole(e.target.value)} required>
               {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </Select>
           </div>
-          <div><Label>Clave de autorización (auth_key)</Label><Input value={authKey} onChange={(e) => setAuthKey(e.target.value)} required placeholder="UTB-DEA-..." /></div>
+          <div><Label>Clave de registro</Label><Input value={authKey} onChange={(e) => setAuthKey(e.target.value)} required placeholder="Clave proporcionada por el administrador" /></div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading || usernameStatus === 'taken'}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
         </form>

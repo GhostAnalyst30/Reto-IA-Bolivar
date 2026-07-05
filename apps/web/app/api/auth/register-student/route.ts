@@ -12,13 +12,12 @@ const schema = z.object({
   username: z.string().min(3).max(30),
   password: z.string().min(8).max(128),
   full_name: z.string().min(2).max(200),
-  institution_id: z.string().uuid().nullish(),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = schema.parse(await request.json());
-    const { email, password, full_name, institution_id } = body;
+    const { email, password, full_name } = body;
     const username = normalizeUsername(body.username);
 
     if (!isUtbEmail(email)) {
@@ -41,7 +40,6 @@ export async function POST(request: NextRequest) {
       email,
       username,
       full_name,
-      institution_id: institution_id ?? null,
     });
 
     await sendConfirmLink(email, full_name);

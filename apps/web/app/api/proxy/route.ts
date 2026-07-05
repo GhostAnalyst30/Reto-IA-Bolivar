@@ -7,11 +7,13 @@ export const runtime = 'nodejs';
 
 async function getAuth() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const [{ data: { user } }, { data: { session } }] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.auth.getSession(),
+  ]);
   if (!user) return { token: undefined, role: '' };
 
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
-  const { data: { session } } = await supabase.auth.getSession();
   return { token: session?.access_token, role: profile?.role || '' };
 }
 

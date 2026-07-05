@@ -1,31 +1,35 @@
 """Student risk scoring and persistence."""
 from datetime import datetime, timedelta, timezone
+
+from core.parallel import run_parallel
 from core.supabase_client import get_supabase
 
 
-def compute_student_risk(user_id: str, institution_id: str) -> dict:
-    sb = get_supabase()
+def _score_risk_from_data(
+    user_id: str,
+    institution_id: str,
+    chats_by_user: dict[str, list],
+    psych_by_user: dict[str, str | None],
+    progress_by_user: dict[str, list[float]],
+    moods_by_user: dict[str, list[float]],
+    week_ago: str,
+) -> dict:
     factors: list[dict] = []
     score = 0.0
 
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-    chats = sb.table("chats").select("updated_at").eq("user_id", user_id).eq(
-        "chat_type", "digital_twin"
-    ).execute()
-    recent = any(c.get("updated_at", "") >= week_ago for c in (chats.data or []))
+    recent = any(c.get("updated_at", "") >= week_ago for c in chats_by_user.get(user_id, []))
     if not recent:
         score += 35
         factors.append({"key": "inactivity", "label": "Sin actividad en Digital Twin (7 días)", "weight": 35})
 
-    psych = sb.table("psychometric_assessments").select("status").eq("user_id", user_id).limit(1).execute()
-    if not psych.data or psych.data[0].get("status") != "completed":
+    psych_status = psych_by_user.get(user_id)
+    if psych_status != "completed":
         score += 25
         factors.append({"key": "survey", "label": "Encuesta psicométrica incompleta", "weight": 25})
 
-    progress = sb.table("student_progress").select("progress_percent").eq("user_id", user_id).execute()
-    if progress.data:
-        avg = sum(p.get("progress_percent", 0) for p in progress.data) / len(progress.data)
+    progress_vals = progress_by_user.get(user_id, [])
+    if progress_vals:
+        avg = sum(progress_vals) / len(progress_vals)
         if avg < 40:
             score += 20
             factors.append({"key": "progress", "label": f"Bajo progreso académico ({avg:.0f}%)", "weight": 20})
@@ -33,11 +37,9 @@ def compute_student_risk(user_id: str, institution_id: str) -> dict:
         score += 10
         factors.append({"key": "progress", "label": "Sin datos de progreso", "weight": 10})
 
-    moods = sb.table("mood_checkins").select("mood_score").eq("user_id", user_id).order(
-        "created_at", desc=True
-    ).limit(3).execute()
-    if moods.data:
-        avg_mood = sum(m["mood_score"] for m in moods.data) / len(moods.data)
+    mood_vals = moods_by_user.get(user_id, [])
+    if mood_vals:
+        avg_mood = sum(mood_vals) / len(mood_vals)
         if avg_mood <= 2:
             score += 20
             factors.append({"key": "mood", "label": "Estado de ánimo bajo reportado", "weight": 20})
@@ -58,22 +60,95 @@ def compute_student_risk(user_id: str, institution_id: str) -> dict:
     }
 
 
+def _load_bulk_risk_data(sb, student_ids: list[str], week_ago: str) -> tuple:
+    if not student_ids:
+        return {}, {}, {}, {}, {}
+
+    def fetch_chats():
+        return sb.table("chats").select("user_id, updated_at").in_("user_id", student_ids).eq(
+            "chat_type", "digital_twin"
+        ).execute()
+
+    def fetch_psych():
+        return sb.table("psychometric_assessments").select("user_id, status").in_(
+            "user_id", student_ids
+        ).execute()
+
+    def fetch_progress():
+        return sb.table("student_progress").select("user_id, progress_percent").in_(
+            "user_id", student_ids
+        ).execute()
+
+    def fetch_moods():
+        return sb.table("mood_checkins").select("user_id, mood_score, created_at").in_(
+            "user_id", student_ids
+        ).order("created_at", desc=True).execute()
+
+    chats_res, psych_res, progress_res, moods_res = run_parallel(
+        fetch_chats, fetch_psych, fetch_progress, fetch_moods
+    )
+
+    chats_by_user: dict[str, list] = {}
+    for c in chats_res.data or []:
+        chats_by_user.setdefault(c["user_id"], []).append(c)
+
+    psych_by_user: dict[str, str | None] = {}
+    for p in psych_res.data or []:
+        psych_by_user[p["user_id"]] = p.get("status")
+
+    progress_by_user: dict[str, list[float]] = {}
+    for p in progress_res.data or []:
+        progress_by_user.setdefault(p["user_id"], []).append(p.get("progress_percent", 0))
+
+    moods_by_user: dict[str, list[float]] = {}
+    for m in moods_res.data or []:
+        uid = m["user_id"]
+        if uid not in moods_by_user:
+            moods_by_user[uid] = []
+        if len(moods_by_user[uid]) < 3:
+            moods_by_user[uid].append(m["mood_score"])
+
+    return chats_by_user, psych_by_user, progress_by_user, moods_by_user, week_ago
+
+
+def compute_student_risk(user_id: str, institution_id: str) -> dict:
+    sb = get_supabase()
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    chats_by_user, psych_by_user, progress_by_user, moods_by_user, _ = _load_bulk_risk_data(
+        sb, [user_id], week_ago
+    )
+    return _score_risk_from_data(
+        user_id, institution_id, chats_by_user, psych_by_user,
+        progress_by_user, moods_by_user, week_ago,
+    )
+
+
 def persist_risk_reports(institution_id: str) -> int:
     sb = get_supabase()
     students = sb.table("users").select("id").eq(
         "institution_id", institution_id
     ).eq("role", "student").eq("status", "approved").execute()
 
-    count = 0
+    student_ids = [s["id"] for s in (students.data or [])]
+    if not student_ids:
+        return 0
+
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    chats_by_user, psych_by_user, progress_by_user, moods_by_user, _ = _load_bulk_risk_data(
+        sb, student_ids, week_ago
+    )
+
     now = datetime.now(timezone.utc).isoformat()
-    for s in students.data or []:
-        report = compute_student_risk(s["id"], institution_id)
-        sb.table("student_risk_reports").insert({
-            **report,
-            "computed_at": now,
-        }).execute()
-        count += 1
-    return count
+    rows = []
+    for uid in student_ids:
+        report = _score_risk_from_data(
+            uid, institution_id, chats_by_user, psych_by_user,
+            progress_by_user, moods_by_user, week_ago,
+        )
+        rows.append({**report, "computed_at": now})
+
+    sb.table("student_risk_reports").insert(rows).execute()
+    return len(rows)
 
 
 def get_latest_risk_by_institution(institution_id: str) -> list[dict]:
@@ -82,25 +157,56 @@ def get_latest_risk_by_institution(institution_id: str) -> list[dict]:
         "institution_id", institution_id
     ).eq("role", "student").eq("status", "approved").execute()
 
+    if not students.data:
+        return []
+
+    student_ids = [s["id"] for s in students.data]
+
+    def fetch_profiles():
+        return sb.table("student_profiles").select("user_id, program, semester").in_(
+            "user_id", student_ids
+        ).execute()
+
+    def fetch_risks():
+        return sb.table("student_risk_reports").select("*").in_(
+            "user_id", student_ids
+        ).order("computed_at", desc=True).execute()
+
+    profiles_res, risks_res = run_parallel(fetch_profiles, fetch_risks)
+
+    profile_map = {p["user_id"]: p for p in (profiles_res.data or [])}
+    risk_map: dict[str, dict] = {}
+    for r in risks_res.data or []:
+        if r["user_id"] not in risk_map:
+            risk_map[r["user_id"]] = r
+
+    missing_ids = [uid for uid in student_ids if uid not in risk_map]
+    computed_map: dict[str, dict] = {}
+    if missing_ids:
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        chats_by_user, psych_by_user, progress_by_user, moods_by_user, _ = _load_bulk_risk_data(
+            sb, missing_ids, week_ago
+        )
+        for uid in missing_ids:
+            computed_map[uid] = _score_risk_from_data(
+                uid, institution_id, chats_by_user, psych_by_user,
+                progress_by_user, moods_by_user, week_ago,
+            )
+
     results = []
-    for s in students.data or []:
-        risk = sb.table("student_risk_reports").select("*").eq(
-            "user_id", s["id"]
-        ).order("computed_at", desc=True).limit(1).execute()
-        profile = sb.table("student_profiles").select("program, semester").eq(
-            "user_id", s["id"]
-        ).limit(1).execute()
+    for s in students.data:
+        uid = s["id"]
+        profile = profile_map.get(uid)
         row = {
-            "user_id": s["id"],
+            "user_id": uid,
             "full_name": s.get("full_name") or s.get("email"),
-            "program": profile.data[0].get("program") if profile.data else None,
-            "semester": profile.data[0].get("semester") if profile.data else None,
+            "program": profile.get("program") if profile else None,
+            "semester": profile.get("semester") if profile else None,
         }
-        if risk.data:
-            row.update(risk.data[0])
+        if uid in risk_map:
+            row.update(risk_map[uid])
         else:
-            computed = compute_student_risk(s["id"], institution_id)
-            row.update(computed)
+            row.update(computed_map[uid])
         results.append(row)
 
     results.sort(key=lambda x: x.get("risk_score", 0), reverse=True)

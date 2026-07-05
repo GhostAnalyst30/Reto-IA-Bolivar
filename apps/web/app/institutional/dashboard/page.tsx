@@ -44,7 +44,7 @@ export default function InstitutionalDashboardPage() {
       <div className="space-y-4">
         <h1 className="font-display text-2xl font-bold">Dashboard UTB</h1>
         <p className="text-zinc-500">
-          Seleccione una institución en el selector superior para ver estadísticas, o vincule su cuenta a una institución.
+          Seleccione la institución UTB en el selector superior para ver estadísticas.
         </p>
       </div>
     );

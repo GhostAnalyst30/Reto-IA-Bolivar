@@ -1,4 +1,4 @@
-import { isDemoEmail } from '@/lib/app-config';
+import { shouldSkipOutgoingEmail } from '@/lib/app-config';
 
 const rateLimit = new Map<string, number>();
 
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Correo requerido' }, { status: 400 });
     }
 
-    if (isDemoEmail(email)) {
+    if (shouldSkipOutgoingEmail(email)) {
       return Response.json({ sent: true, skipped: true });
     }
 

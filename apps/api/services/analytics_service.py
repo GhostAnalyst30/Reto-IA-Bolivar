@@ -1,26 +1,19 @@
 """Real-time institutional analytics from live user data."""
 from datetime import datetime, timedelta, timezone
 
+from core.cache import TTLCache
+from core.parallel import run_parallel
 from core.supabase_client import get_supabase
+
+_dashboard_cache = TTLCache(ttl_seconds=60.0)
 
 
 def _institution_id(user: dict) -> str | None:
     return user.get("institution_id")
 
 
-def compute_dashboard(user: dict) -> dict:
+def _compute_dashboard_impl(inst: str) -> dict:
     sb = get_supabase()
-    inst = _institution_id(user)
-    if not inst:
-        return {
-            "kpis": [],
-            "charts": {
-                "enrollment_trend": [],
-                "engagement": [],
-            },
-            "actions": [],
-            "prediction": {},
-        }
 
     students = sb.table("users").select("id, created_at", count="exact").eq(
         "institution_id", inst
@@ -34,11 +27,33 @@ def compute_dashboard(user: dict) -> dict:
     vocational_count = 0
     saved_count = 0
     active_7d = 0
+    avg_progress = 0.0
 
     if student_ids:
-        chats = sb.table("chats").select("id, user_id, updated_at").in_("user_id", student_ids).execute()
-        chats_count = len(chats.data or [])
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+        def fetch_chats():
+            return sb.table("chats").select("id, user_id, updated_at").in_("user_id", student_ids).execute()
+
+        def fetch_psych():
+            try:
+                return sb.table("psychometric_assessments").select("id", count="exact").eq(
+                    "institution_id", inst
+                ).eq("status", "completed").execute()
+            except Exception:
+                return None
+
+        def fetch_saved():
+            return sb.table("saved_resources").select("id", count="exact").in_("user_id", student_ids).execute()
+
+        def fetch_progress():
+            return sb.table("student_progress").select("progress_percent").in_("user_id", student_ids).execute()
+
+        chats, psych, saved, progress_result = run_parallel(
+            fetch_chats, fetch_psych, fetch_saved, fetch_progress
+        )
+
+        chats_count = len(chats.data or [])
         active_users = {c["user_id"] for c in (chats.data or []) if c.get("updated_at", "") >= week_ago}
         active_7d = len(active_users)
 
@@ -47,24 +62,12 @@ def compute_dashboard(user: dict) -> dict:
             msgs = sb.table("messages").select("id", count="exact").in_("chat_id", chat_ids).execute()
             messages_count = msgs.count or 0
 
-        try:
-            psych = sb.table("psychometric_assessments").select("id", count="exact").eq(
-                "institution_id", inst
-            ).eq("status", "completed").execute()
+        if psych:
             vocational_count = psych.count or 0
-        except Exception:
-            vocational_count = 0
-
-        saved = sb.table("saved_resources").select("id", count="exact").in_("user_id", student_ids).execute()
         saved_count = saved.count or 0
 
-    progress_result = sb.table("student_progress").select("progress_percent").in_(
-        "user_id", student_ids
-    ).execute() if student_ids else None
-
-    avg_progress = 0.0
-    if progress_result and progress_result.data:
-        avg_progress = sum(p.get("progress_percent", 0) for p in progress_result.data) / len(progress_result.data)
+        if progress_result and progress_result.data:
+            avg_progress = sum(p.get("progress_percent", 0) for p in progress_result.data) / len(progress_result.data)
 
     retention = min(99.9, round(70 + (avg_progress * 0.25) + (active_7d / max(enrollment, 1) * 15), 1))
     at_risk = max(0, enrollment - active_7d)
@@ -137,3 +140,25 @@ def compute_dashboard(user: dict) -> dict:
         "prediction": prediction,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def compute_dashboard(user: dict) -> dict:
+    inst = _institution_id(user)
+    if not inst:
+        return {
+            "kpis": [],
+            "charts": {
+                "enrollment_trend": [],
+                "engagement": [],
+            },
+            "actions": [],
+            "prediction": {},
+        }
+
+    cached = _dashboard_cache.get(inst)
+    if cached is not None:
+        return cached
+
+    result = _compute_dashboard_impl(inst)
+    _dashboard_cache.set(inst, result)
+    return result

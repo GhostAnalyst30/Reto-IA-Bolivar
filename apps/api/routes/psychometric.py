@@ -42,7 +42,7 @@ async def get_assessment(user: dict = Depends(require_student)):
 async def submit_assessment(body: SubmitPsychometric, user: dict = Depends(require_student)):
     inst = user.get("institution_id")
     if not inst:
-        raise HTTPException(status_code=400, detail="Vincule una institución primero")
+        raise HTTPException(status_code=400, detail="Perfil sin institución UTB asignada")
     if len(body.responses) < 10:
         raise HTTPException(status_code=400, detail="Debe responder las 10 preguntas")
 

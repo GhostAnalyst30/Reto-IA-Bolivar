@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAppUrl, sendConfirmationEmail, isDemoEmail } from '@/lib/email';
+import { getAppUrl, sendConfirmationEmail, sendPasswordResetEmail, shouldSkipOutgoingEmail } from '@/lib/email';
 import { API_URL } from '@/lib/api';
 
 async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
@@ -85,7 +85,7 @@ export async function callBackendRegister(
 }
 
 export async function sendConfirmLink(email: string, fullName: string) {
-  if (isDemoEmail(email)) {
+  if (shouldSkipOutgoingEmail(email)) {
     return { skipped: true };
   }
 
@@ -106,5 +106,30 @@ export async function sendConfirmLink(email: string, fullName: string) {
     to: email,
     fullName,
     confirmLink: data.properties.action_link,
+  });
+}
+
+export async function sendPasswordResetLink(email: string, fullName: string) {
+  if (shouldSkipOutgoingEmail(email)) {
+    return { skipped: true };
+  }
+
+  const admin = createAdminClient();
+  const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
+
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo },
+  });
+
+  if (error || !data.properties?.action_link) {
+    throw new Error(error?.message || 'No se pudo generar el enlace de recuperación');
+  }
+
+  await sendPasswordResetEmail({
+    to: email,
+    fullName,
+    resetLink: data.properties.action_link,
   });
 }

@@ -8,10 +8,10 @@ import { isUtbEmail, isValidUsername, normalizeUsername } from '@/lib/utb-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, username, password, full_name, institution_id, requested_role, auth_key } =
+    const { email, username, password, full_name, requested_role, auth_key } =
       await request.json();
 
-    if (!email || !username || !password || !full_name || !institution_id || !requested_role || !auth_key) {
+    if (!email || !username || !password || !full_name || !requested_role || !auth_key) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
       email,
       username: normalizedUsername,
       full_name,
-      institution_id,
       requested_role,
       auth_key,
     });

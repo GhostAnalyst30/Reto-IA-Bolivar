@@ -38,12 +38,15 @@ export default function OpportunitiesPage() {
     if (typeFilter) params.set('type', typeFilter);
     if (areaFilter) params.set('area', areaFilter);
     const qs = params.toString() ? `?${params}` : '';
-    proxyJson<Opportunity[]>(`/opportunities${qs}`)
-      .then(setAll)
+    Promise.all([
+      proxyJson<Opportunity[]>(`/opportunities${qs}`),
+      proxyJson<Opportunity[]>('/opportunities/recommended'),
+    ])
+      .then(([allData, recData]) => {
+        setAll(allData);
+        setRecommended(recData);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
-    proxyJson<Opportunity[]>('/opportunities/recommended')
-      .then(setRecommended)
-      .catch(() => {});
   }
 
   return (

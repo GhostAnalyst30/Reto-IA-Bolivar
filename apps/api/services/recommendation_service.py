@@ -1,5 +1,7 @@
 """Opportunity recommendation based on Digital Twin profile."""
 from datetime import date
+
+from core.parallel import run_parallel
 from core.supabase_client import get_supabase
 
 
@@ -43,21 +45,31 @@ def score_opportunity(opp: dict, twin: dict | None, profile: dict | None, psych_
 
 def recommend_opportunities(user_id: str, institution_id: str, limit: int = 5) -> list[dict]:
     sb = get_supabase()
-    opps = sb.table("opportunities").select("*").eq("institution_id", institution_id).eq(
-        "is_active", True
-    ).execute()
+
+    def fetch_opps():
+        return sb.table("opportunities").select("*").eq("institution_id", institution_id).eq(
+            "is_active", True
+        ).execute()
+
+    def fetch_twin():
+        return sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+
+    def fetch_profile():
+        return sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+
+    def fetch_psych():
+        return sb.table("psychometric_assessments").select("responses").eq("user_id", user_id).eq(
+            "status", "completed"
+        ).limit(1).execute()
+
+    opps, twin, profile, psych = run_parallel(fetch_opps, fetch_twin, fetch_profile, fetch_psych)
+
     if not opps.data:
         return []
 
-    twin = sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
     twin_data = twin.data[0] if twin.data else None
-
-    profile = sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
     profile_data = profile.data[0] if profile.data else None
 
-    psych = sb.table("psychometric_assessments").select("responses").eq("user_id", user_id).eq(
-        "status", "completed"
-    ).limit(1).execute()
     psych_tags: list[str] = []
     if psych.data:
         for r in psych.data[0].get("responses") or []:

@@ -4,7 +4,6 @@ const ADMIN_PREFIX = '/admin';
 const PLATFORM_PREFIX = '/platform';
 const PROFILE_PREFIX = '/profile';
 const SESSIONS_PREFIX = '/sessions';
-const REGISTER_PREFIX = '/register';
 
 const STUDENT_PREFIXES = [
   '/chats',
@@ -42,10 +41,6 @@ export function isPathAllowed(path: string, role: string): boolean {
 
   if (path.startsWith(PROFILE_PREFIX) || path.startsWith(SESSIONS_PREFIX)) {
     return true;
-  }
-
-  if (path.startsWith(`${REGISTER_PREFIX}/link-institution`)) {
-    return role === STUDENT_ROLE;
   }
 
   if (path.startsWith(ADMIN_PREFIX)) {

@@ -2,18 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 import { Button, Input, Label } from '@/components/ui';
 import { BentoCell } from '@/components/ui/BentoGrid';
 import { UtbLogo } from '@/components/branding/UtbLogo';
-import { getAppUrl } from '@/lib/app-config';
 
 export default function ForgotPasswordPage() {
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,29 +18,23 @@ export default function ForgotPasswordPage() {
     setError('');
     setMessage('');
 
-    const lookupRes = await fetch(`/api/auth/lookup-username?username=${encodeURIComponent(username.trim())}`);
-    if (!lookupRes.ok) {
-      setMessage('Si el usuario existe, recibirá un enlace para restablecer su contraseña.');
-      setLoading(false);
-      return;
-    }
-    const { email } = await lookupRes.json();
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim() }),
+      });
 
-    if (email.toLowerCase().endsWith('@utb.demo')) {
-      setMessage('Las cuentas demo no reciben correos. Use las credenciales del README.');
-      setLoading(false);
-      return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'No se pudo enviar el correo. Intente más tarde.');
+      } else {
+        setMessage('Si el usuario existe, recibirá un enlace de recuperación en su correo registrado.');
+      }
+    } catch {
+      setError('Error de conexión. Intente más tarde.');
     }
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getAppUrl()}/auth/callback?next=/reset-password`,
-    });
-
-    if (resetError) {
-      setError('No se pudo enviar el correo. Intente más tarde.');
-    } else {
-      setMessage('Si el usuario existe, recibirá un enlace en su correo @utb.edu.co.');
-    }
     setLoading(false);
   }
 

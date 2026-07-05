@@ -16,18 +16,18 @@ Ejecutar en orden (o `python scripts/run_migrations.py --reset`):
 |-------|---------|
 | 1 | `supabase/000_reset.sql` |
 | 2 | `supabase/001_schema.sql` |
-| 3 | `supabase/002_rls_and_seed.sql` |
-| 4 | `supabase/005_accompaniment.sql` |
-| 5 | `supabase/008_auth_username.sql` |
-| 6 | `supabase/007_resource_embeddings_rls.sql` |
-| 7 | `pnpm --filter @reto/web exec tsx ../../scripts/seed-platform-admin.ts` |
-| 8 | `supabase/004_seed_demo_utb.sql` + `006` (demo, opcional) |
+| 3 | `supabase/002_rls.sql` |
+| 4 | `supabase/003_seed_utb.sql` |
+| 5 | `pnpm --filter @reto/web exec tsx ../../scripts/seed-platform-admin.ts` |
+| 6 | `supabase/004_seed_platform_admin.sql` |
+| 7 | `supabase/005_seed_demo_utb.sql` + `006` (demo, opcional) |
 
 O con el script automatizado:
 
 ```bash
-python scripts/run_migrations.py
-pnpm --filter @reto/web exec tsx ../../scripts/seed-platform-admin.ts
+python scripts/run_migrations.py --reset
+SEED_DEMO_PASSWORD=Immanuel3008 pnpm --filter @reto/web exec tsx ../../scripts/seed-platform-admin.ts
+# Luego ejecutar 004_seed_platform_admin.sql en SQL Editor
 ```
 
 ### Módulos UTB Te acompaña
@@ -91,7 +91,7 @@ pnpm dev:web    # terminal 2
 
 **Registro producción:** solo correos `@utb.edu.co`. Login con **username + contraseña** (no email).
 
-Las cuentas `@utb.demo` **no reciben correos** de confirmación ni notificaciones.
+Los correos transaccionales se envían a cualquier dirección registrada, **excepto** cuentas demo (`*demo*@utb.edu.co` o `@utb.demo`).
 
 ## 6. Flujos principales
 

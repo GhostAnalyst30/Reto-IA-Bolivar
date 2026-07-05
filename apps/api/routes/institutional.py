@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
+from core.parallel import run_parallel
 from routes.deps import require_institutional, effective_institution_id
 from agents.director_agent import get_director_insights
 from services.analytics_service import compute_dashboard
@@ -102,25 +103,32 @@ async def get_student_detail(
     if inst and student.data.get("institution_id") != inst:
         raise HTTPException(status_code=403)
 
-    profile = sb.table("student_profiles").select("*").eq("user_id", student_id).limit(1).execute()
-    risk = sb.table("student_risk_reports").select("*").eq(
-        "user_id", student_id
-    ).order("computed_at", desc=True).limit(1).execute()
-    if not risk.data:
-        risk_computed = compute_student_risk(student_id, inst or "")
-    else:
-        risk_computed = risk.data[0]
+    def fetch_profile():
+        return sb.table("student_profiles").select("*").eq("user_id", student_id).limit(1).execute()
 
-    interventions = sb.table("interventions").select("*").eq(
-        "student_id", student_id
-    ).order("created_at", desc=True).execute()
+    def fetch_risk():
+        return sb.table("student_risk_reports").select("*").eq(
+            "user_id", student_id
+        ).order("computed_at", desc=True).limit(1).execute()
 
-    chats = sb.table("chats").select("id, title, updated_at").eq(
-        "user_id", student_id
-    ).order("updated_at", desc=True).limit(10).execute()
+    def fetch_interventions():
+        return sb.table("interventions").select("*").eq(
+            "student_id", student_id
+        ).order("created_at", desc=True).execute()
 
-    twin = None
+    def fetch_chats():
+        return sb.table("chats").select("id, title, updated_at").eq(
+            "user_id", student_id
+        ).order("updated_at", desc=True).limit(10).execute()
+
+    profile, risk, interventions, chats = run_parallel(
+        fetch_profile, fetch_risk, fetch_interventions, fetch_chats
+    )
+
+    risk_computed = risk.data[0] if risk.data else compute_student_risk(student_id, inst or "")
+
     prof = profile.data[0] if profile.data else {}
+    twin = None
     if prof.get("twin_consent"):
         twin_result = sb.table("digital_twin_profiles").select(
             "interests, learning_style, summary_text, traits, generated_at"

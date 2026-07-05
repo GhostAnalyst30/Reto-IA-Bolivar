@@ -1,4 +1,4 @@
--- 002_rls_and_seed.sql — RLS y políticas (sin datos de instituciones)
+-- 002_rls.sql — RLS helpers y políticas
 -- Ejecutar después de 001_schema.sql
 
 -- ─── RLS helpers ────────────────────────────────────────────────────────────
@@ -52,8 +52,17 @@ ALTER TABLE institutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE faculties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE academic_programs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE program_curricula ENABLE ROW LEVEL SECURITY;
+ALTER TABLE student_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE psychometric_assessments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE digital_twin_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE opportunities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_opportunities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE support_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mood_checkins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE student_risk_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;
 
--- ─── Policies ─────────────────────────────────────────────────────────────
+-- ─── Core policies ────────────────────────────────────────────────────────────
 
 CREATE POLICY users_select_own ON users FOR SELECT USING (
   id = auth.uid() OR is_any_admin()
@@ -131,7 +140,7 @@ CREATE POLICY reg_req_insert ON registration_requests FOR INSERT WITH CHECK (
   user_id = auth.uid() AND requested_role = 'student'
 );
 
-CREATE POLICY auth_keys_admin ON role_auth_keys FOR ALL USING (is_admin());
+CREATE POLICY auth_keys_admin ON role_auth_keys FOR ALL USING (is_admin() OR is_platform_admin());
 
 CREATE POLICY faculties_read ON faculties FOR SELECT USING (
   is_approved_user() AND EXISTS (
@@ -162,3 +171,72 @@ CREATE POLICY curricula_read ON program_curricula FOR SELECT USING (
     WHERE p.id = program_curricula.program_id AND u.id = auth.uid() AND u.status = 'approved'
   )
 );
+
+-- ─── Acompañamiento policies ──────────────────────────────────────────────────
+
+CREATE POLICY student_profiles_own ON student_profiles FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY student_profiles_institutional ON student_profiles FOR SELECT
+  USING (
+    is_any_admin() OR EXISTS (
+      SELECT 1 FROM users u WHERE u.id = auth.uid()
+        AND u.role IN ('area_head','dean','vice_president','rector','admin','platform_admin')
+        AND u.institution_id = (SELECT institution_id FROM users WHERE id = student_profiles.user_id)
+    )
+  );
+
+CREATE POLICY psychometric_own ON psychometric_assessments FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY twin_own ON digital_twin_profiles FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY twin_institutional ON digital_twin_profiles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM student_profiles sp
+      WHERE sp.user_id = digital_twin_profiles.user_id AND sp.twin_consent = TRUE
+    )
+    AND EXISTS (
+      SELECT 1 FROM users u WHERE u.id = auth.uid()
+        AND u.role IN ('area_head','dean','vice_president','rector','admin','platform_admin')
+        AND u.institution_id = (SELECT institution_id FROM users WHERE id = digital_twin_profiles.user_id)
+    )
+  );
+
+CREATE POLICY opportunities_select ON opportunities FOR SELECT
+  USING (is_approved_user() AND is_active = TRUE);
+
+CREATE POLICY opportunities_admin ON opportunities FOR ALL
+  USING (is_any_admin());
+
+CREATE POLICY saved_opportunities_own ON saved_opportunities FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY support_requests_own ON support_requests FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY support_requests_staff ON support_requests FOR SELECT
+  USING (is_any_admin());
+
+CREATE POLICY mood_own ON mood_checkins FOR ALL
+  USING (user_id = auth.uid() AND is_approved_user());
+
+CREATE POLICY risk_institutional ON student_risk_reports FOR SELECT
+  USING (
+    is_any_admin() OR EXISTS (
+      SELECT 1 FROM users u WHERE u.id = auth.uid()
+        AND u.role IN ('area_head','dean','vice_president','rector','admin','platform_admin')
+        AND u.institution_id = student_risk_reports.institution_id
+    )
+  );
+
+CREATE POLICY interventions_institutional ON interventions FOR ALL
+  USING (
+    is_any_admin() OR EXISTS (
+      SELECT 1 FROM users u WHERE u.id = auth.uid()
+        AND u.role IN ('area_head','dean','vice_president','rector','admin','platform_admin')
+        AND u.institution_id = interventions.institution_id
+    )
+  );

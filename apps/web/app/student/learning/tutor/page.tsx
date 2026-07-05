@@ -13,12 +13,12 @@ export default function TutorPage() {
   const [loading, setLoading] = useState(false);
 
   async function getOrCreateTutorChat(): Promise<string> {
-    const chats = await proxyJson<{ id: string; title: string }[]>('/chats');
+    const chats = await proxyJson<{ id: string; title: string }[]>('/chats?chat_type=tutor');
     const existing = chats.find((c) => c.title === TUTOR_CHAT_TITLE);
     if (existing) return existing.id;
     const chat = await proxyJson<{ id: string }>('/chats', {
       method: 'POST',
-      body: JSON.stringify({ title: TUTOR_CHAT_TITLE }),
+      body: JSON.stringify({ title: TUTOR_CHAT_TITLE, chat_type: 'tutor' }),
     });
     return chat.id;
   }

@@ -49,14 +49,20 @@ def sync_student_progress(sb, user_id: str) -> None:
         topic = path["topic"]
         by_topic[topic] = max(by_topic.get(topic, 0), pct)
 
+    if not by_topic:
+        return
+
     now = datetime.now(timezone.utc).isoformat()
-    for topic, pct in by_topic.items():
-        sb.table("student_progress").upsert({
+    rows = [
+        {
             "user_id": user_id,
             "topic": topic,
             "progress_percent": pct,
             "updated_at": now,
-        }, on_conflict="user_id,topic").execute()
+        }
+        for topic, pct in by_topic.items()
+    ]
+    sb.table("student_progress").upsert(rows, on_conflict="user_id,topic").execute()
 
 
 class SupportRequestCreate(BaseModel):

@@ -24,7 +24,7 @@ async def generate_twin_profile(responses: list[dict], academic: dict | None = N
         {"role": "user", "content": prompt},
     ]
     try:
-        _, raw, _ = await complete_with_fallback(messages)
+        _, raw, _ = await complete_with_fallback(messages, skip_thinking=True)
         text = raw.strip()
         if text.startswith("```"):
             text = text.split("```")[1]

@@ -77,7 +77,7 @@ async def generate_learning_path(topic: str, user_id: str, institution_id: str |
             "content": f"Tema: {topic}\nRecursos disponibles:\n{catalog or 'Sin recursos — inventa pasos genéricos.'}",
         },
     ]
-    raw = await stream_chat(llm_messages, model=settings.llm_model_path)
+    raw = await stream_chat(llm_messages, model=settings.llm_model_path, skip_thinking=True)
     steps = _parse_llm_steps(raw, relevant, topic)
 
     path = sb.table("learning_paths").insert({

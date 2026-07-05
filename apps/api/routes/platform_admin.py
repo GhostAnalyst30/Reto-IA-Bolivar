@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, EmailStr
 from core.supabase_client import get_supabase
+from core.parallel import run_parallel
 from routes.deps import require_platform_admin
 
 router = APIRouter(prefix="/platform", tags=["platform"])
@@ -36,9 +37,20 @@ def _slugify(value: str) -> str:
 @router.get("/dashboard")
 async def platform_dashboard(admin: dict = Depends(require_platform_admin)):
     sb = get_supabase()
-    users = sb.table("users").select("id, role, status, institution_id, email, full_name, created_at").execute().data or []
-    institutions = sb.table("institutions").select("id, name, is_active").execute().data or []
-    pending = sb.table("registration_requests").select("id").eq("status", "pending").execute().data or []
+
+    def fetch_users():
+        return sb.table("users").select("id, role, status, institution_id, email, full_name, created_at").execute()
+
+    def fetch_institutions():
+        return sb.table("institutions").select("id, name, is_active").execute()
+
+    def fetch_pending():
+        return sb.table("registration_requests").select("id").eq("status", "pending").execute()
+
+    users_res, institutions_res, pending_res = run_parallel(fetch_users, fetch_institutions, fetch_pending)
+    users = users_res.data or []
+    institutions = institutions_res.data or []
+    pending = pending_res.data or []
 
     by_institution: dict[str, int] = {}
     unlinked = 0

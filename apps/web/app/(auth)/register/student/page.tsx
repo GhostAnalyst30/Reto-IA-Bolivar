@@ -3,44 +3,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, Input, Label, Select } from '@/components/ui';
+import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { BentoCell } from '@/components/ui/BentoGrid';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { isUtbEmail, normalizeUsername } from '@/lib/utb-auth';
 
-interface Institution {
-  id: string;
-  name: string;
-  slug: string;
-}
-
-const DEFAULT_SLUG = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_SLUG || 'utb';
-
 export default function RegisterStudentPage() {
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [institutionId, setInstitutionId] = useState('');
-  const [linkLater, setLinkLater] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const router = useRouter();
-
-  useEffect(() => {
-    fetch('/api/institutions')
-      .then((r) => r.json())
-      .then((data: Institution[]) => {
-        setInstitutions(data);
-        const utb = data.find((i) => i.slug === DEFAULT_SLUG);
-        if (utb) setInstitutionId(utb.id);
-      })
-      .catch(() => setInstitutions([]));
-  }, []);
 
   const checkUsername = useCallback(async (value: string) => {
     const normalized = normalizeUsername(value);
@@ -98,7 +76,6 @@ export default function RegisterStudentPage() {
           username: normalizeUsername(username),
           password,
           full_name: fullName,
-          institution_id: linkLater ? null : institutionId || null,
         }),
       });
 
@@ -123,13 +100,14 @@ export default function RegisterStudentPage() {
         <Link href="/" aria-label="Inicio"><UtbLogo /></Link>
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Registro estudiante</h1>
         <p className="mt-2 text-sm text-muted">
-          Microservicio UTB Te acompaña. Requiere correo institucional @utb.edu.co.
+          Microservicio UTB Te acompaña. Solo correos institucionales @utb.edu.co.
         </p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div><Label htmlFor="name">Nombre completo</Label><Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div>
             <Label htmlFor="username">Usuario</Label>
             <Input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="ej. maria_gomez" required />
+            <p className="mt-1 text-xs text-muted">Independiente de la parte local de tu correo.</p>
             {usernameStatus === 'checking' && <p className="mt-1 text-xs text-muted">Verificando...</p>}
             {usernameStatus === 'available' && <p className="mt-1 text-xs text-green-700">Usuario disponible</p>}
             {usernameStatus === 'taken' && (
@@ -154,19 +132,6 @@ export default function RegisterStudentPage() {
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@utb.edu.co" required />
           </div>
           <div><Label htmlFor="password">Contraseña</Label><PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input type="checkbox" checked={linkLater} onChange={(e) => setLinkLater(e.target.checked)} />
-            Vincular institución después del registro
-          </label>
-          {!linkLater && (
-            <div>
-              <Label htmlFor="inst">Institución</Label>
-              <Select id="inst" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-              </Select>
-            </div>
-          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading || usernameStatus === 'taken'}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
         </form>

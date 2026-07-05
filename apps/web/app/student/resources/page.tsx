@@ -27,22 +27,18 @@ export default function ResourcesPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    loadResources();
-    proxyJson<{ resource_id: string }[]>('/saved-resources')
-      .then((d) => setSaved(new Set((Array.isArray(d) ? d : []).map((s) => s.resource_id))))
-      .catch(() => {});
+    const type = tab === 'videos' ? 'youtube' : tab === 'links' ? 'link' : undefined;
+    const qs = type ? `?type=${type}` : '';
+    Promise.all([
+      proxyJson<Resource[]>(`/resources${qs}`),
+      proxyJson<{ resource_id: string }[]>('/saved-resources'),
+    ])
+      .then(([data, savedData]) => {
+        setResources(Array.isArray(data) ? data : []);
+        setSaved(new Set((Array.isArray(savedData) ? savedData : []).map((s) => s.resource_id)));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error'));
   }, [tab]);
-
-  async function loadResources() {
-    try {
-      const type = tab === 'videos' ? 'youtube' : tab === 'links' ? 'link' : undefined;
-      const qs = type ? `?type=${type}` : '';
-      const data = await proxyJson<Resource[]>(`/resources${qs}`);
-      setResources(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error');
-    }
-  }
 
   async function doSearch(e: React.FormEvent) {
     e.preventDefault();

@@ -30,7 +30,9 @@ async def get_current_user(authorization: str | None = Header(None)) -> dict:
 
     user_id = payload.get("sub")
     sb = get_supabase()
-    profile = sb.table("users").select("*").eq("id", user_id).single().execute()
+    profile = sb.table("users").select(
+        "id, email, full_name, role, status, institution_id, username, created_at"
+    ).eq("id", user_id).single().execute()
     if not profile.data:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile.data

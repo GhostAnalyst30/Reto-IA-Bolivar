@@ -1,4 +1,6 @@
 """Digital Twin emotional support agent."""
+import asyncio
+
 from core.supabase_client import get_supabase
 from agents.search_agent import search_resources
 
@@ -21,13 +23,23 @@ async def build_digital_twin_messages(
     user_id: str,
 ) -> tuple[list[dict], list[dict]]:
     sb = get_supabase()
-    twin = sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+
+    def fetch_twin():
+        return sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+
+    def fetch_profile():
+        return sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+
+    twin_task = asyncio.to_thread(fetch_twin)
+    profile_task = asyncio.to_thread(fetch_profile)
+    resources_task = search_resources("bienestar estrés ansiedad autoayuda")
+
+    twin, profile, wellbeing_resources = await asyncio.gather(
+        twin_task, profile_task, resources_task
+    )
+
     twin_data = twin.data[0] if twin.data else {}
-
-    profile = sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
     profile_data = profile.data[0] if profile.data else {}
-
-    wellbeing_resources = await search_resources("bienestar estrés ansiedad autoayuda")
     resource_lines = [f"- {r['title']}: {r.get('description', '')[:120]}" for r in wellbeing_resources[:5]]
 
     context = f"""

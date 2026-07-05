@@ -184,7 +184,7 @@ export function FinalCta() {
     <section className="bg-brand-blue py-24 text-white">
       <div className="mx-auto max-w-3xl px-6 text-center">
         <h2 className="font-display text-4xl font-bold">Comienza hoy</h2>
-        <p className="mt-4 text-brand-blue-light">Regístrate, vincula tu institución y accede tras aprobación del administrador.</p>
+        <p className="mt-4 text-brand-blue-light">Regístrate con tu correo @utb.edu.co y accede tras aprobación del administrador.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Button href="/register/student" size="lg">Registro estudiante</Button>
           <Button href="/register/institutional" variant="secondary" size="lg" className="border-white/40 bg-white/10 text-white hover:bg-white/20">

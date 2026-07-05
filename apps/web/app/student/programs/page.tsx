@@ -31,7 +31,7 @@ export default function ProgramsPage() {
         ))}
         {programs.length === 0 && (
           <BentoCell colSpan={2}>
-            <p className="text-zinc-500">No hay programas disponibles. Vincule su institución o contacte al administrador.</p>
+            <p className="text-zinc-500">No hay programas disponibles. Contacte al administrador.</p>
           </BentoCell>
         )}
       </BentoGrid>
