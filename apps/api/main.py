@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-from routes import register, admin_requests, student, institutional, platform_admin, profile, sessions, psychometric, opportunities, auth
+from routes import register, admin_requests, student, institutional, platform_admin, profile, sessions, psychometric, opportunities
 
 app = FastAPI(title="UTB Te acompaña API", version="1.0.0")
 
@@ -15,7 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
 app.include_router(register.router)
 app.include_router(admin_requests.router)
 app.include_router(student.router)

@@ -28,7 +28,6 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const password = process.env.SEED_DEMO_PASSWORD || 'Immanuel3008';
 const email = process.env.PLATFORM_ADMIN_EMAIL || 'ascendraemmanuel@gmail.com';
-const username = 'admin';
 
 async function main() {
   if (!url || !key) {
@@ -42,7 +41,7 @@ async function main() {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: 'Administrador UTB Te acompaña', username },
+    user_metadata: { full_name: 'Administrador UTB Te acompaña' },
   });
 
   let userId = data.user?.id;
@@ -62,14 +61,13 @@ async function main() {
   await admin.from('users').upsert({
     id: userId,
     email,
-    username,
     full_name: 'Administrador UTB Te acompaña',
     role: 'platform_admin',
     status: 'approved',
     institution_id: null,
   }, { onConflict: 'id' });
 
-  console.log(`OK ${username} (${email}) — platform_admin`);
+  console.log(`OK ${email} — platform_admin`);
 }
 
 main().catch(console.error);

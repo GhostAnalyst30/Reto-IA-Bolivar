@@ -4,13 +4,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 const rateLimit = new Map<string, number>();
 
-async function findUserByUsername(username: string) {
+async function findUserByEmail(email: string) {
   const admin = createAdminClient();
-  const normalized = username.trim().toLowerCase();
+  const normalized = email.trim().toLowerCase();
   const { data, error } = await admin
     .from('users')
     .select('email, full_name')
-    .eq('username', normalized)
+    .eq('email', normalized)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
@@ -19,12 +19,13 @@ async function findUserByUsername(username: string) {
 
 export async function POST(request: Request) {
   try {
-    const { username } = await request.json();
-    if (!username || typeof username !== 'string') {
-      return Response.json({ error: 'Usuario requerido' }, { status: 400 });
+    const { email } = await request.json();
+    if (!email || typeof email !== 'string') {
+      return Response.json({ error: 'Correo requerido' }, { status: 400 });
     }
 
-    const profile = await findUserByUsername(username);
+    const profile = await findUserByEmail(email);
+    // Respuesta genérica: no revelamos si el correo existe.
     if (!profile?.email) {
       return Response.json({ sent: true });
     }

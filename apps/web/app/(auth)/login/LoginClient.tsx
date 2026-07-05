@@ -18,7 +18,7 @@ export default function LoginClient() {
   const searchParams = useSearchParams();
   const initialPortal = (searchParams.get('portal') === 'institutional' ? 'institutional' : 'student') as PortalType;
   const [portal, setPortal] = useState<PortalType>(initialPortal);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,17 +35,12 @@ export default function LoginClient() {
     setLoading(true);
     setError('');
 
-    const lookupRes = await fetch(`/api/auth/lookup-username?username=${encodeURIComponent(username.trim())}`);
-    if (!lookupRes.ok) {
-      setError('Usuario o contraseña incorrectos');
-      setLoading(false);
-      return;
-    }
-    const { email } = await lookupRes.json();
-
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
     if (authError) {
-      setError('Usuario o contraseña incorrectos');
+      setError('Correo o contraseña incorrectos');
       setLoading(false);
       return;
     }
@@ -105,13 +100,14 @@ export default function LoginClient() {
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Iniciar sesión</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <Label htmlFor="username">Usuario</Label>
+            <Label htmlFor="email">Correo institucional</Label>
             <Input
-              id="username"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase())}
-              placeholder="ej. juan_perez"
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="nombre@utb.edu.co"
               required
             />
           </div>

@@ -8,25 +8,10 @@ async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, em
   return found?.id ?? null;
 }
 
-/** Comprueba si un username ya pertenece a otro usuario, ANTES de crear nada. */
-export async function isUsernameTaken(username: string): Promise<boolean> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('users')
-    .select('id')
-    .eq('username', username.toLowerCase())
-    .limit(1);
-  if (error) {
-    throw new Error(error.message || 'No se pudo verificar el nombre de usuario');
-  }
-  return (data?.length ?? 0) > 0;
-}
-
 export async function createAuthUser(
   email: string,
   password: string,
-  fullName: string,
-  username: string
+  fullName: string
 ) {
   const admin = createAdminClient();
 
@@ -34,18 +19,18 @@ export async function createAuthUser(
     email,
     password,
     email_confirm: false,
-    user_metadata: { full_name: fullName, username },
+    user_metadata: { full_name: fullName },
   });
 
   if (data.user) {
-    await ensurePublicUserProfile(admin, data.user.id, email, fullName, username);
+    await ensurePublicUserProfile(admin, data.user.id, email, fullName);
     return data.user.id;
   }
 
   if (error?.message?.toLowerCase().includes('already')) {
     const existingId = await findUserIdByEmail(admin, email);
     if (existingId) {
-      await ensurePublicUserProfile(admin, existingId, email, fullName, username);
+      await ensurePublicUserProfile(admin, existingId, email, fullName);
       return existingId;
     }
   }
@@ -57,14 +42,12 @@ async function ensurePublicUserProfile(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
   email: string,
-  fullName: string,
-  username: string
+  fullName: string
 ) {
   const { error } = await admin.from('users').upsert(
     {
       id: userId,
       email,
-      username: username.toLowerCase(),
       full_name: fullName,
       status: 'pending',
       role: 'student',

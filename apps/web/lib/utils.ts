@@ -43,7 +43,7 @@ export function isPlatformAdmin(role: string): boolean {
   return role === PLATFORM_ADMIN_ROLE;
 }
 
-/** Navegación completa para platform admin (username: admin) */
+/** Navegación completa para platform admin */
 export const PLATFORM_FULL_NAV = [
   { href: '/platform/dashboard', label: 'Dashboard plataforma' },
   { href: '/platform/institutions', label: 'Instituciones' },

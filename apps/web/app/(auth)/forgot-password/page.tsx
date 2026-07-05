@@ -7,7 +7,7 @@ import { BentoCell } from '@/components/ui/BentoGrid';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 
 export default function ForgotPasswordPage() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,14 +22,14 @@ export default function ForgotPasswordPage() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error || 'No se pudo enviar el correo. Intente más tarde.');
       } else {
-        setMessage('Si el usuario existe, recibirá un enlace de recuperación en su correo registrado.');
+        setMessage('Si el correo está registrado, recibirás un enlace de recuperación.');
       }
     } catch {
       setError('Error de conexión. Intente más tarde.');
@@ -45,8 +45,8 @@ export default function ForgotPasswordPage() {
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Recuperar contraseña</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <Label htmlFor="username">Usuario</Label>
-            <Input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} required />
+            <Label htmlFor="email">Correo institucional</Label>
+            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@utb.edu.co" required />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           {message && <p className="text-sm text-green-700">{message}</p>}

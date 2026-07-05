@@ -35,7 +35,7 @@ async def get_current_user(authorization: str | None = Header(None)) -> dict:
     sb = get_supabase()
     try:
         profile = sb.table("users").select(
-            "id, email, full_name, role, status, institution_id, username, created_at"
+            "id, email, full_name, role, status, institution_id, created_at"
         ).eq("id", user_id).limit(1).execute()
     except Exception:
         raise HTTPException(status_code=503, detail="Auth backend unavailable")

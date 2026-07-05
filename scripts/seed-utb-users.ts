@@ -13,15 +13,14 @@ const defaultPassword = process.env.SEED_DEMO_PASSWORD || 'Demo2026!';
 const UTB_INSTITUTION = 'a0000000-0000-4000-8000-000000000001';
 const ENGINEERING_FACULTY = 'b0000000-0000-4000-8000-000000000001';
 
-const USERS: { email: string; username: string; role: string; full_name: string; faculty_id?: string; password?: string }[] = [
-  { email: 'admin.demo@utb.edu.co', username: 'admin_utb', role: 'admin', full_name: 'Admin UTB' },
-  { email: 'rector.demo@utb.edu.co', username: 'rector', role: 'rector', full_name: 'Rector UTB' },
-  { email: 'vicerrector.demo@utb.edu.co', username: 'vicerrector', role: 'vice_president', full_name: 'Vicerrector UTB' },
-  { email: 'decano.demo@utb.edu.co', username: 'decano', role: 'dean', full_name: 'Decano UTB', faculty_id: ENGINEERING_FACULTY },
-  { email: 'director.demo@utb.edu.co', username: 'director_prog', role: 'area_head', full_name: 'Director de Programa UTB', faculty_id: ENGINEERING_FACULTY },
+const USERS: { email: string; role: string; full_name: string; faculty_id?: string; password?: string }[] = [
+  { email: 'admin.demo@utb.edu.co', role: 'admin', full_name: 'Admin UTB' },
+  { email: 'rector.demo@utb.edu.co', role: 'rector', full_name: 'Rector UTB' },
+  { email: 'vicerrector.demo@utb.edu.co', role: 'vice_president', full_name: 'Vicerrector UTB' },
+  { email: 'decano.demo@utb.edu.co', role: 'dean', full_name: 'Decano UTB', faculty_id: ENGINEERING_FACULTY },
+  { email: 'director.demo@utb.edu.co', role: 'area_head', full_name: 'Director de Programa UTB', faculty_id: ENGINEERING_FACULTY },
   ...Array.from({ length: 10 }, (_, i) => ({
     email: `estudiante${String(i + 1).padStart(2, '0')}.demo@utb.edu.co`,
-    username: `estudiante${String(i + 1).padStart(2, '0')}`,
     role: 'student',
     full_name: `Estudiante Demo ${i + 1}`,
   })),
@@ -41,7 +40,7 @@ async function main() {
       email: u.email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: u.full_name, username: u.username },
+      user_metadata: { full_name: u.full_name },
     });
 
     let userId = data.user?.id;
@@ -58,7 +57,6 @@ async function main() {
     await admin.from('users').upsert({
       id: userId,
       email: u.email,
-      username: u.username,
       full_name: u.full_name,
       role: u.role,
       status: 'approved',

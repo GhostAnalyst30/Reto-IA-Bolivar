@@ -1,52 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Card, Input, Label, Select } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ROLE_LABELS } from '@/lib/utils';
-import { isUtbEmail, normalizeUsername } from '@/lib/utb-auth';
+import { isUtbEmail } from '@/lib/utb-auth';
 
 const ROLES = ['area_head', 'dean', 'vice_president', 'rector', 'admin'] as const;
 
 export default function RegisterInstitutionalPage() {
   const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<string>('dean');
   const [authKey, setAuthKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const router = useRouter();
-
-  const checkUsername = useCallback(async (value: string) => {
-    const normalized = normalizeUsername(value);
-    if (normalized.length < 3) {
-      setUsernameStatus('idle');
-      return;
-    }
-    setUsernameStatus('checking');
-    const res = await fetch(`/api/auth/check-username?username=${encodeURIComponent(normalized)}`);
-    const data = await res.json();
-    if (!res.ok) {
-      setUsernameStatus('invalid');
-      return;
-    }
-    setUsernameStatus(data.available ? 'available' : 'taken');
-    setSuggestions(data.suggestions || []);
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (username.trim()) checkUsername(username);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [username, checkUsername]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +38,6 @@ export default function RegisterInstitutionalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
-          username: normalizeUsername(username),
           password,
           full_name: fullName,
           requested_role: role,
@@ -98,17 +70,6 @@ export default function RegisterInstitutionalPage() {
         </p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div><Label>Nombre completo</Label><Input value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
-          <div>
-            <Label htmlFor="username">Usuario</Label>
-            <Input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} required />
-            {usernameStatus === 'taken' && suggestions.length > 0 && (
-              <p className="mt-1 text-xs text-red-600">
-                Ocupado. Prueba: {suggestions.map((s) => (
-                  <button key={s} type="button" className="mr-2 underline" onClick={() => setUsername(s)}>{s}</button>
-                ))}
-              </p>
-            )}
-          </div>
           <div><Label>Correo @utb.edu.co</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="director@utb.edu.co" required /></div>
           <div><Label htmlFor="password">Contraseña</Label><PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
           <div>
@@ -119,7 +80,7 @@ export default function RegisterInstitutionalPage() {
           </div>
           <div><Label>Clave de registro</Label><Input value={authKey} onChange={(e) => setAuthKey(e.target.value)} required placeholder="Clave proporcionada por el administrador" /></div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading || usernameStatus === 'taken'}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
+          <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted"><Link href="/login" className="text-brand-amber hover:underline">¿Ya tienes cuenta?</Link></p>
       </Card>
