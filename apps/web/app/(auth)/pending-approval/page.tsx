@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button, Card, Badge } from '@/components/ui';
+import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Clock, XCircle, LogOut } from 'lucide-react';
 
@@ -34,6 +35,9 @@ export default function PendingApprovalPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-lg text-center">
+        <Link href="/" className="mx-auto mb-6 inline-block" aria-label="Inicio">
+          <UtbLogo />
+        </Link>
         {isRejected ? (
           <XCircle className="mx-auto h-12 w-12 text-red-400" />
         ) : (

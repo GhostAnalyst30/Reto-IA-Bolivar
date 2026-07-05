@@ -5,6 +5,10 @@ import { ThemeProvider } from '@/components/providers/ThemeProvider';
 export const metadata: Metadata = {
   title: 'UTB Te acompaña — Acompañamiento Estudiantil',
   description: 'Microservicio universitario: Digital Twin, oportunidades y panel de riesgo para la UTB.',
+  icons: {
+    icon: '/icons/images.ico',
+    apple: '/icons/images.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useState, Suspense } from 'react';
 import { Button, Card } from '@/components/ui';
+import { UtbLogo } from '@/components/branding/UtbLogo';
 import { Mail } from 'lucide-react';
 
 function CheckEmailContent() {
@@ -43,6 +44,9 @@ function CheckEmailContent() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md text-center">
+        <Link href="/" className="mx-auto mb-6 inline-block" aria-label="Inicio">
+          <UtbLogo />
+        </Link>
         <Mail className="mx-auto h-12 w-12 text-brand-amber" />
         <h1 className="mt-4 text-2xl font-semibold">Revisa tu correo</h1>
         <p className="mt-3 text-zinc-400">
