@@ -11,10 +11,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', href, children, ...props }, ref) => {
     const styles = cn(
-      'inline-flex items-center justify-center rounded-lg font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-amber disabled:opacity-50',
+      'inline-flex items-center justify-center rounded-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:opacity-50',
       {
-        'bg-brand-amber text-brand-bg hover:bg-[#E8D48B]': variant === 'primary',
-        'border border-brand-border bg-brand-surface hover:border-brand-amber/50': variant === 'secondary',
+        'bg-brand-amber text-white hover:bg-[#d97a1f]': variant === 'primary',
+        'border border-brand-blue-mid bg-brand-surface text-brand-blue-mid hover:bg-brand-blue/5 hover:border-brand-blue': variant === 'secondary',
         'hover:bg-brand-surface': variant === 'ghost',
         'bg-red-900/40 text-red-200 hover:bg-red-900/60': variant === 'danger',
         'px-3 py-1.5 text-sm': size === 'sm',
@@ -43,7 +43,7 @@ Button.displayName = 'Button';
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn('rounded-xl border border-brand-border bg-brand-surface p-6', className)}>
+    <div className={cn('rounded-sm border border-brand-border bg-brand-surface p-6 shadow-sm transition-transform hover:scale-[1.005]', className)}>
       {children}
     </div>
   );
@@ -53,7 +53,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return (
     <input
       className={cn(
-        'w-full rounded-lg border border-brand-border bg-brand-bg px-4 py-2.5 text-sm text-foreground placeholder:text-zinc-500 focus:border-brand-amber focus:outline-none',
+        'w-full rounded-sm border border-brand-border bg-brand-bg px-4 py-2.5 text-sm text-foreground placeholder:text-muted focus:border-brand-amber focus:outline-none',
         className
       )}
       {...props}
@@ -63,7 +63,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
 
 export function Label({ children, htmlFor, className }: { children: React.ReactNode; htmlFor?: string; className?: string }) {
   return (
-    <label htmlFor={htmlFor} className={cn('mb-1.5 block text-sm font-medium text-zinc-300', className)}>
+    <label htmlFor={htmlFor} className={cn('mb-1.5 block text-sm font-medium text-foreground', className)}>
       {children}
     </label>
   );
@@ -73,7 +73,7 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
   return (
     <select
       className={cn(
-        'w-full rounded-lg border border-brand-border bg-brand-bg px-4 py-2.5 text-sm text-foreground focus:border-brand-amber focus:outline-none',
+        'w-full rounded-sm border border-brand-border bg-brand-bg px-4 py-2.5 text-sm text-foreground focus:border-brand-amber focus:outline-none',
         className
       )}
       {...props}

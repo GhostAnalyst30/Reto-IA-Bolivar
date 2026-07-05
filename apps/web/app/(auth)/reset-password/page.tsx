@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { BentoCell } from '@/components/ui/BentoGrid';
+import { UtbLogo } from '@/components/branding/UtbLogo';
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('');
@@ -38,12 +39,10 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4">
       <BentoCell animate={false} className="w-full max-w-md">
-        <Link href="/" className="font-display text-2xl font-bold">
-          Bolívar<span className="text-brand-amber">IA</span>
-        </Link>
-        <h1 className="mt-6 text-xl font-semibold">Nueva contraseña</h1>
+        <Link href="/" aria-label="Inicio"><UtbLogo /></Link>
+        <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Nueva contraseña</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <Label htmlFor="password">Nueva contraseña</Label>

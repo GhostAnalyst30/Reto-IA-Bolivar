@@ -25,6 +25,7 @@ CREATE TABLE faculties (
 CREATE TABLE users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'student' CHECK (role IN (
     'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin', 'platform_admin'
@@ -34,8 +35,16 @@ CREATE TABLE users (
   area_id UUID,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'suspended')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT users_email_domain CHECK (
+    role = 'platform_admin'
+    OR email ILIKE '%@utb.edu.co'
+    OR email ILIKE '%@utb.demo'
+  ),
+  CONSTRAINT users_username_format CHECK (username ~ '^[a-z][a-z0-9_]{2,29}$')
 );
+
+CREATE INDEX idx_users_username ON users(username);
 
 ALTER TABLE institutions
   ADD COLUMN IF NOT EXISTS managed_by UUID REFERENCES users(id);
@@ -194,7 +203,7 @@ CREATE INDEX idx_role_auth_keys_institution_role ON role_auth_keys(institution_i
 CREATE INDEX idx_security_events_created ON security_events(created_at DESC);
 CREATE INDEX idx_user_sessions_active ON user_sessions(user_id) WHERE is_active = TRUE;
 
--- ─── UTB vocational ─────────────────────────────────────────────────────────
+-- ─── Programas académicos UTB ───────────────────────────────────────────────
 
 CREATE TABLE academic_programs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -215,27 +224,19 @@ CREATE TABLE program_curricula (
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE vocational_assessments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  institution_id UUID NOT NULL REFERENCES institutions(id),
-  status TEXT CHECK (status IN ('in_progress', 'completed')) DEFAULT 'in_progress',
-  answers JSONB DEFAULT '[]',
-  suggested_program_ids UUID[] DEFAULT '{}',
-  ai_summary TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- ─── Auth trigger ───────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.users (id, email, full_name, status)
+  INSERT INTO public.users (id, email, username, full_name, status)
   VALUES (
     NEW.id,
     NEW.email,
+    COALESCE(
+      NULLIF(trim(NEW.raw_user_meta_data->>'username'), ''),
+      lower(regexp_replace(split_part(NEW.email, '@', 1), '[^a-z0-9_]', '_', 'g'))
+    ),
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
     'pending'
   );

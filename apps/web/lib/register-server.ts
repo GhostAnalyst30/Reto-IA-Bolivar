@@ -8,25 +8,30 @@ async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, em
   return found?.id ?? null;
 }
 
-export async function createAuthUser(email: string, password: string, fullName: string) {
+export async function createAuthUser(
+  email: string,
+  password: string,
+  fullName: string,
+  username: string
+) {
   const admin = createAdminClient();
 
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: false,
-    user_metadata: { full_name: fullName },
+    user_metadata: { full_name: fullName, username },
   });
 
   if (data.user) {
-    await ensurePublicUserProfile(admin, data.user.id, email, fullName);
+    await ensurePublicUserProfile(admin, data.user.id, email, fullName, username);
     return data.user.id;
   }
 
   if (error?.message?.toLowerCase().includes('already')) {
     const existingId = await findUserIdByEmail(admin, email);
     if (existingId) {
-      await ensurePublicUserProfile(admin, existingId, email, fullName);
+      await ensurePublicUserProfile(admin, existingId, email, fullName, username);
       return existingId;
     }
   }
@@ -38,12 +43,14 @@ async function ensurePublicUserProfile(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
   email: string,
-  fullName: string
+  fullName: string,
+  username: string
 ) {
   const { error } = await admin.from('users').upsert(
     {
       id: userId,
       email,
+      username: username.toLowerCase(),
       full_name: fullName,
       status: 'pending',
       role: 'student',

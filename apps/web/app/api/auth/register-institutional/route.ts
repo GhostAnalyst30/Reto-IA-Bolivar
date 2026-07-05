@@ -4,20 +4,34 @@ import {
   createAuthUser,
   sendConfirmLink,
 } from '@/lib/register-server';
+import { isUtbEmail, isValidUsername, normalizeUsername } from '@/lib/utb-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, full_name, institution_id, requested_role, auth_key } = await request.json();
+    const { email, username, password, full_name, institution_id, requested_role, auth_key } =
+      await request.json();
 
-    if (!email || !password || !full_name || !institution_id || !requested_role || !auth_key) {
+    if (!email || !username || !password || !full_name || !institution_id || !requested_role || !auth_key) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
-    const userId = await createAuthUser(email, password, full_name);
+    const normalizedUsername = normalizeUsername(username);
+    if (!isUtbEmail(email)) {
+      return NextResponse.json(
+        { error: 'Solo se permiten correos institucionales @utb.edu.co' },
+        { status: 400 }
+      );
+    }
+    if (!isValidUsername(normalizedUsername)) {
+      return NextResponse.json({ error: 'Nombre de usuario inválido' }, { status: 400 });
+    }
+
+    const userId = await createAuthUser(email, password, full_name, normalizedUsername);
 
     await callBackendRegister('/register/institutional', {
       user_id: userId,
       email,
+      username: normalizedUsername,
       full_name,
       institution_id,
       requested_role,

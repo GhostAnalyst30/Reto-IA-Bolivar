@@ -100,6 +100,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/student/onboarding', request.url));
   }
 
+  if (
+    profile.role === 'student' &&
+    profile.status === 'approved' &&
+    profile.institution_id &&
+    !path.startsWith('/student/onboarding') &&
+    !path.startsWith('/student/profile') &&
+    !path.startsWith('/student/twin')
+  ) {
+    try {
+      const { data: psych } = await supabase
+        .from('psychometric_assessments')
+        .select('status')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!psych || psych.status !== 'completed') {
+        if (!path.startsWith('/student/onboarding/survey')) {
+          return NextResponse.redirect(new URL('/student/onboarding/survey', request.url));
+        }
+      }
+    } catch {
+      /* table may not exist before migration */
+    }
+  }
+
   return response;
 }
 

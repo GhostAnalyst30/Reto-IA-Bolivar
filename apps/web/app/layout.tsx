@@ -3,8 +3,8 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 
 export const metadata: Metadata = {
-  title: 'Bolívar IA — Plataforma Inteligente',
-  description: 'El cerebro analítico de tu institución. Portal estudiante y suite directivos.',
+  title: 'UTB Te acompaña — Acompañamiento Estudiantil',
+  description: 'Microservicio universitario: Digital Twin, oportunidades y panel de riesgo para la UTB.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

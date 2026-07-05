@@ -14,7 +14,11 @@ const STUDENT_PREFIXES = [
   '/saved-resources',
   '/progress',
   '/programs',
-  '/vocational',
+  '/psychometric',
+  '/opportunities',
+  '/support-requests',
+  '/mood-checkins',
+  '/self-help',
 ];
 
 const INSTITUTIONAL_PREFIXES = ['/institutional'];
@@ -45,6 +49,10 @@ export function isPathAllowed(path: string, role: string): boolean {
   }
 
   if (path.startsWith(ADMIN_PREFIX)) {
+    return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
+  }
+
+  if (path.startsWith('/opportunities/admin')) {
     return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
   }
 

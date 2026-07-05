@@ -6,13 +6,33 @@ from core.auth_keys import verify_auth_key, is_key_valid
 from core.security_monitor import log_security_event
 from core.security import get_current_user
 from core.config import settings
+from core.username import is_valid_username, normalize_username, is_utb_email
 
 router = APIRouter(tags=["register"])
+
+
+def _validate_username_unique(sb, username: str) -> str:
+    normalized = normalize_username(username)
+    if not is_valid_username(normalized):
+        raise HTTPException(
+            status_code=400,
+            detail="Usuario inválido: 3-30 caracteres, letra inicial, minúsculas/números/_",
+        )
+    existing = sb.table("users").select("id").eq("username", normalized).limit(1).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail="El nombre de usuario ya está en uso")
+    return normalized
+
+
+def _validate_utb_email(email: str) -> None:
+    if not is_utb_email(email):
+        raise HTTPException(status_code=400, detail="El correo debe ser institucional @utb.edu.co")
 
 
 class StudentRegister(BaseModel):
     user_id: str
     email: EmailStr
+    username: str
     full_name: str
     institution_id: str | None = None
 
@@ -20,6 +40,7 @@ class StudentRegister(BaseModel):
 class InstitutionalRegister(BaseModel):
     user_id: str
     email: EmailStr
+    username: str
     full_name: str
     institution_id: str
     requested_role: str
@@ -85,12 +106,15 @@ async def register_student(
 ):
     await _verify_register_caller(body.user_id, body.email, authorization, x_internal_register_key)
     sb = get_supabase()
+    _validate_utb_email(body.email)
+    username = _validate_username_unique(sb, body.username)
     if body.institution_id:
         _validate_institution(sb, body.institution_id)
 
     sb.table("users").upsert({
         "id": body.user_id,
         "email": body.email,
+        "username": username,
         "full_name": body.full_name,
         "institution_id": body.institution_id,
         "role": "student",
@@ -148,6 +172,8 @@ async def register_institutional(
         raise HTTPException(status_code=400, detail="Rol inválido")
 
     sb = get_supabase()
+    _validate_utb_email(body.email)
+    username = _validate_username_unique(sb, body.username)
     _validate_institution(sb, body.institution_id)
 
     keys = sb.table("role_auth_keys").select("*").eq(
@@ -173,6 +199,7 @@ async def register_institutional(
     sb.table("users").upsert({
         "id": body.user_id,
         "email": body.email,
+        "username": username,
         "full_name": body.full_name,
         "institution_id": body.institution_id,
         "role": body.requested_role,

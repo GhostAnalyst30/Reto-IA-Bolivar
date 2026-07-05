@@ -1,0 +1,51 @@
+"""Digital Twin emotional support agent."""
+from core.supabase_client import get_supabase
+from agents.search_agent import search_resources
+
+TWIN_CHAT_SYSTEM = """Eres el Digital Twin de acompañamiento emocional de la UTB (Universidad Tecnológica de Bolívar).
+Ofreces un espacio seguro, confidencial y empático para estudiantes universitarios.
+
+Directrices:
+- Responde en español, con tono cálido y profesional
+- Usa técnicas básicas de apoyo: validación emocional, escucha activa, preguntas abiertas
+- Identifica señales de estrés, ansiedad o desmotivación sin diagnosticar
+- Sugiere recursos de autoayuda del catálogo cuando sea apropiado
+- Si detectas riesgo significativo, menciona amablemente la opción de "Solicitar apoyo humano"
+- Nunca reemplaces atención psicológica profesional
+- No inventes URLs ni datos del estudiante"""
+
+
+async def build_digital_twin_messages(
+    history: list[dict],
+    new_message: str,
+    user_id: str,
+) -> tuple[list[dict], list[dict]]:
+    sb = get_supabase()
+    twin = sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+    twin_data = twin.data[0] if twin.data else {}
+
+    profile = sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+    profile_data = profile.data[0] if profile.data else {}
+
+    wellbeing_resources = await search_resources("bienestar estrés ansiedad autoayuda")
+    resource_lines = [f"- {r['title']}: {r.get('description', '')[:120]}" for r in wellbeing_resources[:5]]
+
+    context = f"""
+Perfil Digital Twin:
+- Intereses: {', '.join(twin_data.get('interests') or [])}
+- Estilo aprendizaje: {twin_data.get('learning_style', 'no definido')}
+- Resumen: {twin_data.get('summary_text', 'Encuesta pendiente')}
+- Programa: {profile_data.get('program', 'N/A')}, Semestre: {profile_data.get('semester', 'N/A')}
+"""
+    system = TWIN_CHAT_SYSTEM + context
+    if resource_lines:
+        system += "\n\nRecursos de autoayuda disponibles:\n" + "\n".join(resource_lines)
+
+    messages = [{"role": "system", "content": system}]
+    for msg in history[-12:]:
+        if msg["role"] in ("user", "assistant"):
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    if not history or history[-1].get("content") != new_message:
+        messages.append({"role": "user", "content": new_message})
+
+    return messages, wellbeing_resources[:3]

@@ -52,7 +52,6 @@ ALTER TABLE institutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE faculties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE academic_programs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE program_curricula ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vocational_assessments ENABLE ROW LEVEL SECURITY;
 
 -- ─── Policies ─────────────────────────────────────────────────────────────
 
@@ -71,6 +70,21 @@ CREATE POLICY resources_select ON resources FOR SELECT USING (
       WHERE u.id = auth.uid()
         AND (u.role = 'platform_admin' OR u.institution_id IS NULL OR u.institution_id = resources.institution_id)
     )
+  )
+);
+
+CREATE POLICY resource_embeddings_select ON resource_embeddings FOR SELECT USING (
+  is_approved_user() AND EXISTS (
+    SELECT 1 FROM resources r
+    WHERE r.id = resource_embeddings.resource_id
+      AND (
+        r.institution_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM users u
+          WHERE u.id = auth.uid()
+            AND (u.role = 'platform_admin' OR u.institution_id IS NULL OR u.institution_id = r.institution_id)
+        )
+      )
   )
 );
 
@@ -148,5 +162,3 @@ CREATE POLICY curricula_read ON program_curricula FOR SELECT USING (
     WHERE p.id = program_curricula.program_id AND u.id = auth.uid() AND u.status = 'approved'
   )
 );
-
-CREATE POLICY vocational_own ON vocational_assessments FOR ALL USING (user_id = auth.uid());

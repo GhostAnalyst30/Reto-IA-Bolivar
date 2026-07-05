@@ -1,16 +1,17 @@
 """Chat and student API routes."""
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
 from core.llm_router import stream_with_fallback
 from routes.deps import require_student
 from agents.tutor_agent import build_tutor_messages
+from agents.digital_twin_agent import build_digital_twin_messages
 from agents.path_agent import generate_learning_path
 from agents.search_agent import search_resources
-from agents.vocational_agent import vocational_reply, get_programs
+from agents.vocational_agent import get_programs
 from services.resource_scraper import search_external, ingest_urls_from_message
 
 router = APIRouter(tags=["student"])
@@ -18,6 +19,7 @@ router = APIRouter(tags=["student"])
 
 class ChatCreate(BaseModel):
     title: str | None = None
+    chat_type: str = "digital_twin"
 
 
 class MessageCreate(BaseModel):
@@ -57,10 +59,23 @@ def sync_student_progress(sb, user_id: str) -> None:
         }, on_conflict="user_id,topic").execute()
 
 
+class SupportRequestCreate(BaseModel):
+    chat_id: str | None = None
+    reason: str
+
+
+class MoodCheckinCreate(BaseModel):
+    mood_score: int
+    note: str | None = None
+
+
 @router.get("/chats")
-async def list_chats(user: dict = Depends(require_student)):
+async def list_chats(user: dict = Depends(require_student), chat_type: str | None = Query(None)):
     sb = get_supabase()
-    result = sb.table("chats").select("*").eq("user_id", user["id"]).order("updated_at", desc=True).execute()
+    query = sb.table("chats").select("*").eq("user_id", user["id"])
+    if chat_type:
+        query = query.eq("chat_type", chat_type)
+    result = query.order("updated_at", desc=True).execute()
     return result.data or []
 
 
@@ -70,6 +85,7 @@ async def create_chat(body: ChatCreate, user: dict = Depends(require_student)):
     result = sb.table("chats").insert({
         "user_id": user["id"],
         "title": body.title or "Nueva conversación",
+        "chat_type": body.chat_type,
     }).execute()
     return result.data[0]
 
@@ -94,8 +110,13 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
     sb.table("messages").insert({"chat_id": chat_id, "role": "user", "content": body.content}).execute()
 
     history = sb.table("messages").select("role, content").eq("chat_id", chat_id).order("created_at").execute()
-    await ingest_urls_from_message(body.content, user.get("institution_id"))
-    messages = await build_tutor_messages(history.data or [], body.content)
+    chat_type = chat.data.get("chat_type", "digital_twin")
+
+    if chat_type == "tutor":
+        await ingest_urls_from_message(body.content, user.get("institution_id"))
+        messages = await build_tutor_messages(history.data or [], body.content)
+    else:
+        messages, _ = await build_digital_twin_messages(history.data or [], body.content, user["id"])
 
     async def event_generator():
         full = ""
@@ -172,11 +193,6 @@ async def complete_step(path_id: str, step_id: str, user: dict = Depends(require
     return {"completed": True}
 
 
-class VocationalMessage(BaseModel):
-    content: str
-    assessment_id: str | None = None
-
-
 @router.post("/search")
 async def search(body: SearchQuery, user: dict = Depends(require_student)):
     local = await search_resources(body.q)
@@ -190,13 +206,55 @@ async def search(body: SearchQuery, user: dict = Depends(require_student)):
 
 
 @router.get("/resources")
-async def list_resources(user: dict = Depends(require_student)):
+async def list_resources(user: dict = Depends(require_student), type: str | None = Query(None), category: str | None = Query(None)):
     sb = get_supabase()
-    query = sb.table("resources").select("id, title, description, topic, url, resource_type")
+    query = sb.table("resources").select("id, title, description, topic, url, resource_type, category")
     if user.get("institution_id"):
         query = query.eq("institution_id", user["institution_id"])
+    if type:
+        query = query.eq("resource_type", type)
+    if category:
+        query = query.eq("category", category)
     result = query.limit(50).execute()
     return result.data or []
+
+
+@router.post("/support-requests")
+async def create_support_request(body: SupportRequestCreate, user: dict = Depends(require_student)):
+    sb = get_supabase()
+    result = sb.table("support_requests").insert({
+        "user_id": user["id"],
+        "chat_id": body.chat_id,
+        "reason": body.reason,
+    }).execute()
+    return result.data[0]
+
+
+@router.post("/mood-checkins")
+async def create_mood_checkin(body: MoodCheckinCreate, user: dict = Depends(require_student)):
+    if body.mood_score < 1 or body.mood_score > 5:
+        raise HTTPException(status_code=400, detail="Puntuación entre 1 y 5")
+    sb = get_supabase()
+    result = sb.table("mood_checkins").insert({
+        "user_id": user["id"],
+        "mood_score": body.mood_score,
+        "note": body.note,
+    }).execute()
+    return result.data[0]
+
+
+@router.get("/mood-checkins")
+async def list_mood_checkins(user: dict = Depends(require_student)):
+    sb = get_supabase()
+    result = sb.table("mood_checkins").select("*").eq("user_id", user["id"]).order(
+        "created_at", desc=True
+    ).limit(30).execute()
+    return result.data or []
+
+
+@router.get("/self-help")
+async def self_help_resources(user: dict = Depends(require_student), topic: str = Query("bienestar")):
+    return await search_resources(topic)
 
 
 @router.get("/saved-resources")
@@ -244,63 +302,3 @@ async def list_programs(user: dict = Depends(require_student)):
     if not inst:
         return []
     return await get_programs(inst)
-
-
-@router.get("/vocational/assessment")
-async def get_vocational(user: dict = Depends(require_student)):
-    sb = get_supabase()
-    result = sb.table("vocational_assessments").select("*").eq(
-        "user_id", user["id"]
-    ).order("created_at", desc=True).limit(1).execute()
-    return result.data[0] if result.data else None
-
-
-@router.post("/vocational/message")
-async def vocational_message(body: VocationalMessage, user: dict = Depends(require_student)):
-    sb = get_supabase()
-    inst = user.get("institution_id")
-    if not inst:
-        raise HTTPException(status_code=400, detail="Vincule una institución primero")
-
-    assessment_id = body.assessment_id
-    if not assessment_id:
-        created = sb.table("vocational_assessments").insert({
-            "user_id": user["id"],
-            "institution_id": inst,
-            "status": "in_progress",
-            "answers": [],
-        }).execute()
-        assessment_id = created.data[0]["id"]
-
-    assessment = sb.table("vocational_assessments").select("*").eq("id", assessment_id).eq(
-        "user_id", user["id"]
-    ).single().execute()
-    if not assessment.data:
-        raise HTTPException(status_code=404)
-
-    answers = assessment.data.get("answers") or []
-    history = [{"role": a["role"], "content": a["content"]} for a in answers]
-    reasoning, reply, suggested_names = await vocational_reply(history, body.content, inst)
-
-    answers.append({"role": "user", "content": body.content})
-    answers.append({"role": "assistant", "content": reply, "reasoning": reasoning})
-
-    programs = await get_programs(inst)
-    suggested_ids = [p["id"] for p in programs if p["name"] in suggested_names]
-    status = "completed" if len(suggested_ids) >= 1 and len(answers) >= 6 else "in_progress"
-
-    sb.table("vocational_assessments").update({
-        "answers": answers,
-        "suggested_program_ids": suggested_ids,
-        "ai_summary": reply if status == "completed" else None,
-        "status": status,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", assessment_id).execute()
-
-    return {
-        "assessment_id": assessment_id,
-        "reply": reply,
-        "reasoning": reasoning,
-        "suggested_programs": [p for p in programs if p["id"] in suggested_ids],
-        "status": status,
-    }

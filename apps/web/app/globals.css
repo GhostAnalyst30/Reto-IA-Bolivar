@@ -5,13 +5,19 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f4f4f5;
+  --bg: #f2f2f2;
   --surface: #ffffff;
-  --border: #e4e4e7;
-  --text: #18181b;
-  --muted: #71717a;
-  --amber: #c9a227;
-  --blue-deep: #1a2744;
+  --border: #bdbdbd;
+  --text: #000000;
+  --muted: #666666;
+  --utb-blue: #003a70;
+  --utb-blue-mid: #005b96;
+  --utb-blue-light: #4a90c2;
+  --utb-orange: #f28c28;
+  --privacy: #6366f1;
+  /* aliases usados en componentes existentes */
+  --amber: var(--utb-orange);
+  --blue-deep: var(--utb-blue);
 }
 
 .dark {
@@ -20,8 +26,13 @@
   --border: #2a2a2e;
   --text: #f4f4f5;
   --muted: #a1a1aa;
-  --amber: #c9a227;
-  --blue-deep: #1a2744;
+  --utb-blue: #003a70;
+  --utb-blue-mid: #005b96;
+  --utb-blue-light: #4a90c2;
+  --utb-orange: #f28c28;
+  --privacy: #6366f1;
+  --amber: var(--utb-orange);
+  --blue-deep: var(--utb-blue);
 }
 
 * { box-sizing: border-box; }
@@ -40,7 +51,11 @@ body {
 
 @layer utilities {
   .text-gradient {
-    @apply bg-gradient-to-r from-[#C9A227] to-[#E8D48B] bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-brand-blue to-brand-blue-light bg-clip-text text-transparent;
+  }
+
+  .text-gradient-accent {
+    @apply bg-gradient-to-r from-brand-blue-mid to-brand-amber bg-clip-text text-transparent;
   }
 }
 

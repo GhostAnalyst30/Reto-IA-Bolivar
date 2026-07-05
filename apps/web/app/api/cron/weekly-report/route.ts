@@ -22,10 +22,10 @@ export async function POST(request: NextRequest) {
 
     await sendWeeklyReportEmail({
       to: getWeeklyReportEmail(),
-      subject: 'Reporte semanal UTB Bolívar IA — admin@utb.demo',
+      subject: 'Reporte semanal — UTB Te acompaña',
       html: `
-        <h1>Reporte semanal — Bolívar IA UTB</h1>
-        <p>Destinatario lógico: admin@utb.demo</p>
+        <h1>Reporte semanal — UTB Te acompaña</h1>
+        <p>Administrador de plataforma (admin)</p>
         <ul>${rows || '<li>Sin actividad registrada</li>'}</ul>
         <p>Generado: ${new Date().toISOString()}</p>
       `,

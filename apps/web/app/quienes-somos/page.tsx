@@ -6,42 +6,42 @@ export default function QuienesSomosPage() {
     <div className="min-h-screen bg-brand-bg">
       <SiteHeader />
       <main className="mx-auto max-w-7xl px-6 pt-28 pb-16">
-        <h1 className="font-display text-4xl font-bold md:text-5xl">Quiénes somos</h1>
-        <p className="mt-4 max-w-2xl text-lg text-zinc-500">
-          Bolívar IA es la plataforma inteligente de la Universidad Tecnológica de Bolívar (UTB),
-          diseñada para potenciar el aprendizaje estudiantil y la toma de decisiones institucionales.
+        <h1 className="font-display text-4xl font-bold text-brand-blue md:text-5xl">Quiénes somos</h1>
+        <p className="mt-4 max-w-2xl text-lg text-muted">
+          UTB Te acompaña es el microservicio de acompañamiento estudiantil de la Universidad Tecnológica de Bolívar,
+          diseñado para prevenir la deserción y apoyar la toma de decisiones institucionales.
         </p>
 
         <BentoGrid cols={3} className="mt-12">
           <BentoCell colSpan={2}>
-            <h2 className="text-xl font-semibold">Nuestra misión</h2>
-            <p className="mt-3 text-zinc-500 leading-relaxed">
-              Integrar inteligencia artificial responsable en la vida académica de la UTB: tutoría personalizada,
-              orientación vocacional, analítica en tiempo real y herramientas ejecutivas para directivos.
+            <h2 className="font-display text-xl font-semibold text-brand-blue">Nuestra misión</h2>
+            <p className="mt-3 text-muted leading-relaxed">
+              Integrar inteligencia artificial responsable en la vida académica UTB: Digital Twin, encuesta psicométrica,
+              oportunidades personalizadas, panel de riesgo e intervenciones para el personal autorizado.
             </p>
           </BentoCell>
           <BentoCell>
-            <h2 className="text-xl font-semibold">UTB</h2>
-            <p className="mt-3 text-zinc-500">
+            <h2 className="font-display text-xl font-semibold text-brand-blue">UTB</h2>
+            <p className="mt-3 text-muted">
               Universidad Tecnológica de Bolívar — Cartagena, Colombia. Formación tecnológica con impacto regional.
             </p>
           </BentoCell>
           <BentoCell>
-            <h2 className="text-xl font-semibold">Estudiantes</h2>
-            <p className="mt-3 text-zinc-500">
-              Chat IA, rutas de aprendizaje, test vocacional, buscador de recursos educativos y seguimiento de progreso.
+            <h2 className="font-display text-xl font-semibold text-brand-blue">Estudiantes</h2>
+            <p className="mt-3 text-muted">
+              Encuesta de caracterización, Digital Twin, oportunidades, recursos de apoyo y tutoría con IA.
             </p>
           </BentoCell>
           <BentoCell>
-            <h2 className="text-xl font-semibold">Directivos</h2>
-            <p className="mt-3 text-zinc-500">
-              Analítica, predicción de retención, resumen ejecutivo, acciones recomendadas y Director de IA.
+            <h2 className="font-display text-xl font-semibold text-brand-blue">Directivos</h2>
+            <p className="mt-3 text-muted">
+              Dashboard de riesgo, analítica, predicción de deserción, intervenciones y gestión de contenido.
             </p>
           </BentoCell>
           <BentoCell>
-            <h2 className="text-xl font-semibold">Equipo</h2>
-            <p className="mt-3 text-zinc-500">
-              Desarrollado para el Reto IA Bolívar 2026. Plataforma institucional con enfoque en privacidad y transparencia.
+            <h2 className="font-display text-xl font-semibold text-brand-blue">Equipo</h2>
+            <p className="mt-3 text-muted">
+              Microservicio universitario con enfoque en privacidad, consentimiento informado y transparencia algorítmica.
             </p>
           </BentoCell>
         </BentoGrid>

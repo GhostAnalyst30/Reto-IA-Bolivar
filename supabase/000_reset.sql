@@ -9,6 +9,15 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP TRIGGER IF EXISTS resources_search_vector_update ON public.resources;
 
 -- Tablas (orden por dependencias FK)
+DROP TABLE IF EXISTS public.interventions CASCADE;
+DROP TABLE IF EXISTS public.student_risk_reports CASCADE;
+DROP TABLE IF EXISTS public.mood_checkins CASCADE;
+DROP TABLE IF EXISTS public.support_requests CASCADE;
+DROP TABLE IF EXISTS public.saved_opportunities CASCADE;
+DROP TABLE IF EXISTS public.opportunities CASCADE;
+DROP TABLE IF EXISTS public.digital_twin_profiles CASCADE;
+DROP TABLE IF EXISTS public.psychometric_assessments CASCADE;
+DROP TABLE IF EXISTS public.student_profiles CASCADE;
 DROP TABLE IF EXISTS public.vocational_assessments CASCADE;
 DROP TABLE IF EXISTS public.program_curricula CASCADE;
 DROP TABLE IF EXISTS public.academic_programs CASCADE;

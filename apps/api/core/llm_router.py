@@ -30,7 +30,7 @@ async def _openrouter_complete(messages: list[dict], model: str) -> str:
     client = AsyncOpenAI(
         base_url=settings.openrouter_base_url,
         api_key=settings.openrouter_api_key,
-        default_headers={"HTTP-Referer": settings.app_url, "X-Title": "Reto IA Bolivar"},
+        default_headers={"HTTP-Referer": settings.app_url, "X-Title": "UTB Te acompaña"},
     )
     response = await client.chat.completions.create(
         model=model, messages=messages, stream=False, max_tokens=1024,

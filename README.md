@@ -1,23 +1,23 @@
-# Plataforma Inteligente — Reto IA Bolívar
+# UTB Te acompaña — Plataforma de acompañamiento estudiantil
 
-Plataforma educativa con **portal estudiante** (chat IA, rutas, RAG, progreso) y **suite institucional** (analítica, predicción, documental, Director de IA). Incluye administración de plataforma multi-institución, registro con aprobación, `auth_key` para roles directivos y perfiles con notificaciones por correo.
+Microservicio de la **Universidad Tecnológica de Bolívar** con portal estudiante (Digital Twin, oportunidades, recursos, aprendizaje) y suite institucional (analítica, riesgo, administración). Registro con `@utb.edu.co`, login por **usuario + contraseña**, `auth_key` para directivos.
 
-## Bolivar IA
+## UTB Te acompaña
 
-![Landing — Bolívar IA - Oscuro](img/imagen_1.png)
+![Landing — UTB Te acompaña - Oscuro](img/imagen_1.png)
 
-![Landing — Bolívar IA - Claro](img/imagen_1_.png)
+![Landing — UTB Te acompaña - Claro](img/imagen_1_.png)
 
 ## Roles
 
 | Rol | Acceso |
 |-----|--------|
-| `platform_admin` | Crear instituciones, ver todos los usuarios (`admin@bolivar.ia.com`) |
+| `platform_admin` | Crear instituciones, ver todos los usuarios (`admin` / `ascendraemmanuel@gmail.com`) |
 | `admin` | Gestor de una institución: solicitudes, claves, programas |
 | `rector`, `dean`, etc. | Suite institucional de su universidad |
 | `student` | Portal estudiante tras aprobación |
 
-![Landing — Bolívar IA](img/imagen_3.png)
+![Landing — UTB Te acompaña](img/imagen_3.png)
 
 ## Stack
 
@@ -35,6 +35,8 @@ pnpm dev:web   # puerto 3000
 ## Documentación técnica
 
 Setup local, variables de entorno, migraciones SQL, deploy y cuentas demo: **[DOCUMENTATION.md](DOCUMENTATION.md)**
+
+Visión del producto: **[NEW_IDEA.md](NEW_IDEA.md)**
 
 ## Arquitectura
 

@@ -40,7 +40,7 @@ export default function PlatformDashboardPage() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Resumen ejecutivo</h2>
-      <p className="text-sm text-zinc-500">admin@bolivar.ia.com — vista global de la plataforma</p>
+      <p className="text-sm text-muted">admin — vista global del microservicio UTB Te acompaña</p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((s) => (
           <Card key={s.label}>

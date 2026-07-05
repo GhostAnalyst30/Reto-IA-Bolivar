@@ -12,7 +12,15 @@ def compute_dashboard(user: dict) -> dict:
     sb = get_supabase()
     inst = _institution_id(user)
     if not inst:
-        return {"kpis": [], "charts": {}, "actions": [], "prediction": {}}
+        return {
+            "kpis": [],
+            "charts": {
+                "enrollment_trend": [],
+                "engagement": [],
+            },
+            "actions": [],
+            "prediction": {},
+        }
 
     students = sb.table("users").select("id, created_at", count="exact").eq(
         "institution_id", inst
@@ -40,10 +48,10 @@ def compute_dashboard(user: dict) -> dict:
             messages_count = msgs.count or 0
 
         try:
-            voc = sb.table("vocational_assessments").select("id", count="exact").eq(
+            psych = sb.table("psychometric_assessments").select("id", count="exact").eq(
                 "institution_id", inst
             ).eq("status", "completed").execute()
-            vocational_count = voc.count or 0
+            vocational_count = psych.count or 0
         except Exception:
             vocational_count = 0
 
@@ -67,7 +75,7 @@ def compute_dashboard(user: dict) -> dict:
         {"metric_name": "retention_rate", "metric_value": retention, "metric_unit": "percent", "period": "live"},
         {"metric_name": "chat_sessions", "metric_value": chats_count, "metric_unit": "chats", "period": "live"},
         {"metric_name": "messages_total", "metric_value": messages_count, "metric_unit": "messages", "period": "live"},
-        {"metric_name": "vocational_completed", "metric_value": vocational_count, "metric_unit": "tests", "period": "live"},
+        {"metric_name": "psychometric_completed", "metric_value": vocational_count, "metric_unit": "encuestas", "period": "live"},
         {"metric_name": "resources_saved", "metric_value": saved_count, "metric_unit": "bookmarks", "period": "live"},
         {"metric_name": "avg_progress", "metric_value": round(avg_progress, 1), "metric_unit": "percent", "period": "live"},
         {"metric_name": "at_risk_students", "metric_value": at_risk, "metric_unit": "students", "period": "14d"},
@@ -82,7 +90,7 @@ def compute_dashboard(user: dict) -> dict:
         "engagement": [
             {"label": "Chats", "value": chats_count},
             {"label": "Mensajes", "value": messages_count},
-            {"label": "Vocacionales", "value": vocational_count},
+            {"label": "Encuestas", "value": vocational_count},
         ],
     }
 
@@ -95,7 +103,7 @@ def compute_dashboard(user: dict) -> dict:
         })
     if vocational_count < enrollment * 0.3 and enrollment > 0:
         actions.append({
-            "title": "Promover test vocacional en primer semestre",
+            "title": "Promover encuesta psicométrica en primer semestre",
             "priority": "medium",
             "status": "pending",
         })

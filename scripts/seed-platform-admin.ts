@@ -4,11 +4,31 @@
  * Usage: SEED_DEMO_PASSWORD=Demo2026! npx tsx scripts/seed-platform-admin.ts
  */
 import { createClient } from '@supabase/supabase-js';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+
+function loadEnvFile(relativePath: string) {
+  const envPath = join(__dirname, relativePath);
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+
+loadEnvFile('../apps/web/.env.local');
+loadEnvFile('../apps/api/.env');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const password = process.env.SEED_DEMO_PASSWORD || 'Demo2026!';
-const email = 'admin@bolivar.ia.com';
+const email = process.env.PLATFORM_ADMIN_EMAIL || 'ascendraemmanuel@gmail.com';
+const username = 'admin';
 
 async function main() {
   if (!url || !key) {
@@ -22,7 +42,7 @@ async function main() {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: 'Administrador Bolívar IA' },
+    user_metadata: { full_name: 'Administrador UTB Te acompaña', username },
   });
 
   let userId = data.user?.id;
@@ -42,13 +62,14 @@ async function main() {
   await admin.from('users').upsert({
     id: userId,
     email,
-    full_name: 'Administrador Bolívar IA',
+    username,
+    full_name: 'Administrador UTB Te acompaña',
     role: 'platform_admin',
     status: 'approved',
     institution_id: null,
   }, { onConflict: 'id' });
 
-  console.log(`OK ${email} (platform_admin)`);
+  console.log(`OK ${username} (${email}) — platform_admin`);
 }
 
 main().catch(console.error);

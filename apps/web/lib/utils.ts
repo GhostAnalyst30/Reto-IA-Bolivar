@@ -18,9 +18,9 @@ export function getPortalForRole(role: string): 'student' | 'institutional' | 'p
 
 export function getDefaultPath(role: string): string {
   if (role === PLATFORM_ADMIN_ROLE) return '/platform/dashboard';
-  if (role === STUDENT_ROLE) return '/student/chat';
+  if (role === STUDENT_ROLE) return '/student/twin/summary';
   if (role === 'admin') return '/institutional/admin';
-  return '/institutional/analytics';
+  return '/institutional/dashboard';
 }
 
 export function getProfilePath(role: string): string {
@@ -43,11 +43,13 @@ export function isPlatformAdmin(role: string): boolean {
   return role === PLATFORM_ADMIN_ROLE;
 }
 
-/** Navegación completa para admin@bolivar.ia.com */
+/** Navegación completa para platform admin (username: admin) */
 export const PLATFORM_FULL_NAV = [
   { href: '/platform/dashboard', label: 'Dashboard plataforma' },
   { href: '/platform/institutions', label: 'Instituciones' },
   { href: '/platform/users', label: 'Usuarios' },
+  { href: '/institutional/dashboard', label: 'Dashboard' },
+  { href: '/institutional/risk', label: 'Riesgo de deserción' },
   { href: '/institutional/analytics', label: 'Analítica' },
   { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/documents', label: 'Documental' },

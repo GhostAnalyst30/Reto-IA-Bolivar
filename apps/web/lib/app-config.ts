@@ -4,7 +4,7 @@ export function getAppUrl() {
 
 export function isDemoEmail(email: string): boolean {
   const lower = email.toLowerCase();
-  return lower.endsWith('@utb.demo') || lower.endsWith('@bolivar.ia.com');
+  return lower.endsWith('@utb.demo') || lower === 'ascendraemmanuel@gmail.com';
 }
 
 export function getWeeklyReportEmail(): string {

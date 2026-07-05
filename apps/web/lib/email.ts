@@ -15,21 +15,21 @@ export async function sendConfirmationEmail(params: {
     return { id: 'skipped-demo', link: params.confirmLink };
   }
 
-  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const from = process.env.RESEND_FROM_EMAIL || 'UTB Te acompaña <onboarding@resend.dev>';
   const appUrl = getAppUrl();
 
   const html = `
-    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; color: #111;">
-      <h1 style="color: #C9A227;">Bolívar IA</h1>
+    <div style="font-family: 'DM Sans', system-ui, sans-serif; max-width: 520px; margin: 0 auto; color: #000;">
+      <h1 style="color: #003A70; font-family: Georgia, serif;">UTB Te acompaña</h1>
       <p>Hola <strong>${params.fullName}</strong>,</p>
-      <p>Confirma tu correo para activar tu cuenta y continuar con la solicitud de acceso a la plataforma.</p>
+      <p>Confirma tu correo institucional para activar tu cuenta en el microservicio de acompañamiento UTB.</p>
       <p style="margin: 28px 0;">
         <a href="${params.confirmLink}"
-           style="background: #C9A227; color: #0A0A0B; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+           style="background: #F28C28; color: #FFFFFF; padding: 14px 28px; border-radius: 2px; text-decoration: none; font-weight: 600; display: inline-block;">
           Confirmar cuenta y continuar
         </a>
       </p>
-      <p style="font-size: 12px; color: #888;">Plataforma Bolívar IA · ${appUrl}</p>
+      <p style="font-size: 12px; color: #666;">UTB Te acompaña · ${appUrl}</p>
     </div>
   `;
 
@@ -41,7 +41,7 @@ export async function sendConfirmationEmail(params: {
   const { data, error } = await resend.emails.send({
     from,
     to: params.to,
-    subject: 'Confirma tu cuenta — Bolívar IA',
+    subject: 'Confirma tu cuenta — UTB Te acompaña',
     html,
   });
 
@@ -58,7 +58,7 @@ export async function sendWeeklyReportEmail(params: {
     console.warn('[email] Weekly report (dev):', params.subject);
     return { id: 'dev-log' };
   }
-  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const from = process.env.RESEND_FROM_EMAIL || 'UTB Te acompaña <onboarding@resend.dev>';
   const { data, error } = await resend.emails.send({
     from,
     to: params.to,
@@ -79,11 +79,11 @@ export async function sendProfileChangeEmail(params: {
     return { id: 'skipped-demo' };
   }
 
-  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const from = process.env.RESEND_FROM_EMAIL || 'UTB Te acompaña <onboarding@resend.dev>';
   const changesList = params.changes.map((c) => `<li>${c}</li>`).join('');
   const html = `
     <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
-      <h1 style="color: #C9A227;">Bolívar IA</h1>
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
       <p>Hola <strong>${params.fullName}</strong>,</p>
       <p>Se actualizó tu perfil en la plataforma:</p>
       <ul>${changesList}</ul>
@@ -99,7 +99,7 @@ export async function sendProfileChangeEmail(params: {
   const { data, error } = await resend.emails.send({
     from,
     to: params.to,
-    subject: 'Cambio en tu perfil — Bolívar IA',
+    subject: 'Cambio en tu perfil — UTB Te acompaña',
     html,
   });
   if (error) throw new Error(error.message);
@@ -112,10 +112,10 @@ export async function sendPasswordChangeEmail(params: { to: string; fullName: st
     return { id: 'skipped-demo' };
   }
 
-  const from = process.env.RESEND_FROM_EMAIL || 'Bolívar IA <onboarding@resend.dev>';
+  const from = process.env.RESEND_FROM_EMAIL || 'UTB Te acompaña <onboarding@resend.dev>';
   const html = `
     <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
-      <h1 style="color: #C9A227;">Bolívar IA</h1>
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
       <p>Hola <strong>${params.fullName}</strong>,</p>
       <p>Tu contraseña fue actualizada correctamente.</p>
       <p style="font-size: 12px; color: #888;">Si no realizaste este cambio, contacta al administrador de inmediato.</p>
@@ -130,7 +130,7 @@ export async function sendPasswordChangeEmail(params: { to: string; fullName: st
   const { data, error } = await resend.emails.send({
     from,
     to: params.to,
-    subject: 'Contraseña actualizada — Bolívar IA',
+    subject: 'Contraseña actualizada — UTB Te acompaña',
     html,
   });
   if (error) throw new Error(error.message);

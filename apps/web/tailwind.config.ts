@@ -9,14 +9,22 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          amber: '#C9A227',
-          blue: '#1A2744',
+          amber: '#F28C28',
+          orange: '#F28C28',
+          blue: '#003A70',
+          'blue-mid': '#005B96',
+          'blue-light': '#4A90C2',
           bg: 'var(--bg)',
           surface: 'var(--surface)',
           border: 'var(--border)',
         },
         foreground: 'var(--text)',
         muted: 'var(--muted)',
+        privacy: '#6366F1',
+      },
+      fontFamily: {
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        display: ['Newsreader', 'Georgia', 'serif'],
       },
     },
   },

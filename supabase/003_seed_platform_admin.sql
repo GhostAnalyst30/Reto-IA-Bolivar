@@ -2,16 +2,17 @@
 -- Ejecutar DESPUÉS de crear el usuario en Auth:
 --   npx tsx scripts/seed-platform-admin.ts
 --
--- Cuenta: admin@bolivar.ia.com (rol platform_admin, sin institución)
--- Correo de reportes reales: ascendraemmanuel@gmail.com (configurado en env)
+-- Cuenta: username admin · ascendraemmanuel@gmail.com (rol platform_admin)
 
 UPDATE public.users SET
   role = 'platform_admin',
   status = 'approved',
   institution_id = NULL,
-  full_name = 'Administrador Bolívar IA'
-WHERE email = 'admin@bolivar.ia.com';
+  username = 'admin',
+  full_name = 'Administrador UTB Te acompaña'
+WHERE email = 'ascendraemmanuel@gmail.com'
+   OR username = 'admin';
 
-SELECT email, role, status, institution_id
+SELECT username, email, role, status, institution_id
 FROM public.users
-WHERE email = 'admin@bolivar.ia.com';
+WHERE username = 'admin' OR email = 'ascendraemmanuel@gmail.com';

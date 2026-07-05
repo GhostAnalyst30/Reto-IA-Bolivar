@@ -18,9 +18,13 @@ SUPABASE = ROOT / "supabase"
 MIGRATIONS = [
     SUPABASE / "001_schema.sql",
     SUPABASE / "002_rls_and_seed.sql",
+    SUPABASE / "005_accompaniment.sql",
+    SUPABASE / "007_resource_embeddings_rls.sql",
+    SUPABASE / "008_auth_username.sql",
 ]
 RESET = SUPABASE / "000_reset.sql"
 DEMO_SEED = SUPABASE / "004_seed_demo_utb.sql"
+DEMO_ACCOMPANIMENT = SUPABASE / "006_seed_accompaniment_utb.sql"
 
 PROJECT_REF = "vecvvcryqhgrtulnqnxq"
 
@@ -59,6 +63,11 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Ejecuta scripts SQL de Supabase")
     parser.add_argument("--reset", action="store_true", help="Ejecutar 000_reset.sql antes (borra todo)")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Ejecutar seeds demo UTB (004 + 006) tras migraciones base",
+    )
     args = parser.parse_args()
     # Cargar PASSWORD desde apps/web/.env.local si existe
     env_local = ROOT / "apps" / "web" / ".env.local"
@@ -82,6 +91,8 @@ def main():
 
     try:
         files = ([RESET] if args.reset else []) + MIGRATIONS
+        if args.demo:
+            files += [DEMO_SEED, DEMO_ACCOMPANIMENT]
         print("\nEjecutando scripts SQL:")
         for path in files:
             if not path.exists():
@@ -104,11 +115,25 @@ def main():
             res = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM institutional_kpis")
             kpis = cur.fetchone()[0]
+            cur.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = 'opportunities'"
+            )
+            has_accompaniment = cur.fetchone()[0] == 1
+            opportunities = 0
+            if has_accompaniment:
+                cur.execute("SELECT COUNT(*) FROM opportunities")
+                opportunities = cur.fetchone()[0]
 
         print(f"\nOK Completado — instituciones: {inst}, recursos: {res}, KPIs: {kpis}")
+        if has_accompaniment:
+            print(f"  Módulo acompañamiento: OK — oportunidades: {opportunities}")
+        else:
+            print("  AVISO: falta 005_accompaniment.sql (tablas de acompañamiento no presentes)")
         print("\nSiguiente paso:")
         print("  1. npx tsx scripts/seed-platform-admin.ts")
-        print("  2. (opcional demo UTB) npx tsx scripts/seed-utb-users.ts + 004_seed_demo_utb.sql")
+        print("  2. (opcional demo UTB) npx tsx scripts/seed-utb-users.ts")
+        print("     Luego: python scripts/run_migrations.py --demo  (o solo 004/006 en SQL Editor)")
     finally:
         conn.close()
 

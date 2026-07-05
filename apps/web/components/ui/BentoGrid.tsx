@@ -49,8 +49,8 @@ export function BentoCell({ children, className, colSpan = 1, rowSpan = 1, anima
   const content = (
     <div
       className={cn(
-        'rounded-xl border border-brand-border bg-brand-surface p-5 transition-transform hover:scale-[1.01] dark:border-brand-border',
-        'shadow-sm hover:shadow-md hover:border-brand-amber/30',
+        'rounded-sm border border-brand-border bg-brand-surface p-5 transition-transform hover:scale-[1.005]',
+        'shadow-sm hover:shadow-md hover:border-brand-blue-light/50',
         spanClasses,
         className
       )}
