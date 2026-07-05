@@ -14,14 +14,17 @@ UTB_INSTITUTION_SLUG = "utb"
 STAFF_ROLES = ("area_head", "dean", "vice_president", "rector", "admin")
 
 
-def _validate_username_unique(sb, username: str) -> str:
+def _validate_username_unique(sb, username: str, exclude_user_id: str | None = None) -> str:
     normalized = normalize_username(username)
     if not is_valid_username(normalized):
         raise HTTPException(
             status_code=400,
             detail="Usuario inválido: 3-30 caracteres, letra inicial, minúsculas/números/_",
         )
-    existing = sb.table("users").select("id").eq("username", normalized).limit(1).execute()
+    query = sb.table("users").select("id").eq("username", normalized)
+    if exclude_user_id:
+        query = query.neq("id", exclude_user_id)
+    existing = query.limit(1).execute()
     if existing.data:
         raise HTTPException(status_code=409, detail="El nombre de usuario ya está en uso")
     return normalized
@@ -113,7 +116,7 @@ async def register_student(
     await _verify_register_caller(body.user_id, body.email, authorization, x_internal_register_key)
     sb = get_supabase()
     _validate_utb_email(body.email)
-    username = _validate_username_unique(sb, body.username)
+    username = _validate_username_unique(sb, body.username, exclude_user_id=body.user_id)
     institution_id = _get_utb_institution_id(sb)
 
     sb.table("users").upsert({
@@ -150,7 +153,7 @@ async def register_institutional(
 
     sb = get_supabase()
     _validate_utb_email(body.email)
-    username = _validate_username_unique(sb, body.username)
+    username = _validate_username_unique(sb, body.username, exclude_user_id=body.user_id)
     institution_id = _get_utb_institution_id(sb)
 
     keys = sb.table("role_auth_keys").select("*").eq(
