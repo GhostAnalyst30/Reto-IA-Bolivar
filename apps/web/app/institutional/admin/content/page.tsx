@@ -8,8 +8,10 @@ interface Opportunity {
   id: string;
   type: string;
   title: string;
+  description?: string;
   area?: string;
   deadline?: string;
+  external_url?: string;
   is_active: boolean;
 }
 
@@ -24,6 +26,7 @@ export default function AdminContentPage() {
     external_url: '',
   });
   const [loading, setLoading] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -34,17 +37,28 @@ export default function AdminContentPage() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await proxyJson('/opportunities/admin', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...form,
-        requirements: [],
-        tags: [form.area],
-      }),
-    });
+    const payload = { ...form, requirements: [], tags: [form.area] };
+    if (editId) {
+      await proxyJson(`/opportunities/admin/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      setEditId(null);
+    } else {
+      await proxyJson('/opportunities/admin', { method: 'POST', body: JSON.stringify(payload) });
+    }
     setForm({ type: 'beca', title: '', description: '', area: 'general', deadline: '', external_url: '' });
     load();
     setLoading(false);
+  }
+
+  function startEdit(o: Opportunity) {
+    setEditId(o.id);
+    setForm({
+      type: o.type,
+      title: o.title,
+      description: o.description || '',
+      area: o.area || 'general',
+      deadline: o.deadline?.slice(0, 10) || '',
+      external_url: o.external_url || '',
+    });
   }
 
   async function remove(id: string) {
@@ -87,19 +101,24 @@ export default function AdminContentPage() {
             <Label>URL externa</Label>
             <Input value={form.external_url} onChange={(e) => setForm({ ...form, external_url: e.target.value })} />
           </div>
-          <Button type="submit" disabled={loading}>Crear</Button>
+          <Button type="submit" disabled={loading}>{editId ? 'Actualizar' : 'Crear'}</Button>
+          {editId && <Button type="button" variant="secondary" onClick={() => setEditId(null)}>Cancelar</Button>}
         </form>
       </Card>
 
       <div className="space-y-2">
         {opps.map((o) => (
-          <Card key={o.id} className="flex items-center justify-between gap-4">
-            <div>
+          <Card key={o.id} className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
               <span className="text-xs uppercase text-brand-amber">{o.type}</span>
               <p className="font-medium">{o.title}</p>
+              {o.description && <p className="text-sm text-muted truncate">{o.description}</p>}
               {o.deadline && <p className="text-xs text-zinc-500">Límite: {o.deadline}</p>}
             </div>
+            <div className="flex gap-2 shrink-0">
+            <Button size="sm" variant="secondary" onClick={() => startEdit(o)}>Editar</Button>
             <Button size="sm" variant="ghost" onClick={() => remove(o.id)}>Desactivar</Button>
+            </div>
           </Card>
         ))}
       </div>

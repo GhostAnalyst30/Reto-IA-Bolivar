@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Button, Card, Badge } from '@/components/ui';
+import { Button, Badge } from '@/components/ui';
+import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Clock, XCircle, LogOut } from 'lucide-react';
@@ -33,34 +34,33 @@ export default function PendingApprovalPage() {
   const isRejected = profile?.status === 'rejected';
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-lg text-center">
+    <ClayFormCard className="max-w-lg text-center">
         <Link href="/" className="mx-auto mb-6 inline-block" aria-label="Inicio">
           <UtbLogo />
         </Link>
         {isRejected ? (
-          <XCircle className="mx-auto h-12 w-12 text-red-400" />
+          <XCircle className="mx-auto h-12 w-12 text-red-600 dark:text-red-400" />
         ) : (
           <Clock className="mx-auto h-12 w-12 text-brand-amber" />
         )}
-        <h1 className="mt-4 text-2xl font-semibold">
+        <h1 className="font-display mt-4 text-2xl font-semibold text-brand-blue">
           {isRejected ? 'Solicitud denegada' : 'Solicitud en revisión'}
         </h1>
         <Badge variant={isRejected ? 'red' : 'amber'} className="mt-3">
           {profile?.status || 'pending'}
         </Badge>
         {request && (
-          <p className="mt-4 text-zinc-400">
-            Rol solicitado: <strong>{ROLE_LABELS[request.requested_role] || request.requested_role}</strong>
+          <p className="mt-4 text-muted">
+            Rol solicitado: <strong className="text-foreground">{ROLE_LABELS[request.requested_role] || request.requested_role}</strong>
           </p>
         )}
         {isRejected && request?.rejection_reason && (
-          <p className="mt-4 rounded-lg bg-red-900/20 p-4 text-sm text-red-200">
+          <p className="mt-4 rounded-[var(--public-radius-md)] bg-red-600/10 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
             Motivo: {request.rejection_reason}
           </p>
         )}
         {!isRejected && (
-          <p className="mt-4 text-zinc-400">
+          <p className="mt-4 text-muted">
             Un administrador revisará tu solicitud. Recibirás acceso al portal una vez aprobada.
           </p>
         )}
@@ -71,7 +71,6 @@ export default function PendingApprovalPage() {
           )}
           <Button href="/" variant="secondary">Volver al inicio</Button>
         </div>
-      </Card>
-    </div>
+    </ClayFormCard>
   );
 }

@@ -2,6 +2,11 @@ export function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
 }
 
+/** Base URL for links inside transactional emails (confirm, reset). */
+export function getEmailAppUrl() {
+  return process.env.EMAIL_APP_URL || getAppUrl();
+}
+
 /**
  * Omite envío a cuentas demo: local-part con "demo" en @utb.edu.co, o dominio @utb.demo.
  * Se puede desactivar globalmente con SKIP_DEMO_EMAILS=false para forzar el envío real

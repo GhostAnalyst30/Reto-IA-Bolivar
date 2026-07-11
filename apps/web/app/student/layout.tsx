@@ -15,7 +15,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
   }
 
   return (
-    <PortalShell title="Portal Estudiante UTB" subtitle={profile.full_name || profile.email} nav={STUDENT_NAV} learningNav={STUDENT_NAV_LEARNING} role={profile.role}>
+    <PortalShell nav={STUDENT_NAV} learningNav={STUDENT_NAV_LEARNING} role={profile.role} portal="student">
       {children}
     </PortalShell>
   );

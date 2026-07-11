@@ -3,8 +3,10 @@ import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, EmailStr
+from core.cache import platform_cache
 from core.supabase_client import get_supabase
 from core.parallel import run_parallel
+from core.security import invalidate_user_cache
 from routes.deps import require_platform_admin
 
 router = APIRouter(prefix="/platform", tags=["platform"])
@@ -36,7 +38,48 @@ def _slugify(value: str) -> str:
 
 @router.get("/dashboard")
 async def platform_dashboard(admin: dict = Depends(require_platform_admin)):
+    cached = platform_cache.get("dashboard")
+    if cached is not None:
+        return cached
+
     sb = get_supabase()
+
+    try:
+        stats_res = sb.rpc("platform_dashboard_stats").execute()
+        stats = stats_res.data or {}
+    except Exception:
+        stats = {}
+
+    if stats:
+        def fetch_recent():
+            return sb.table("users").select(
+                "id, role, status, institution_id, email, full_name, created_at"
+            ).order("created_at", desc=True).limit(10).execute()
+
+        recent_res = fetch_recent()
+        recent_users = recent_res.data or []
+        by_institution: dict[str, int] = {}
+        by_role: dict[str, int] = {}
+        counts_res = sb.table("users").select("institution_id, role").execute()
+        for u in counts_res.data or []:
+            r = u.get("role") or "unknown"
+            by_role[r] = by_role.get(r, 0) + 1
+            iid = u.get("institution_id")
+            if iid:
+                by_institution[iid] = by_institution.get(iid, 0) + 1
+
+        result = {
+            "total_users": int(stats.get("total_users") or 0),
+            "total_institutions": int(stats.get("total_institutions") or 0),
+            "active_institutions": int(stats.get("active_institutions") or 0),
+            "pending_requests": int(stats.get("pending_requests") or 0),
+            "unlinked_users": int(stats.get("unlinked_users") or 0),
+            "users_by_institution": by_institution,
+            "users_by_role": by_role,
+            "recent_users": recent_users,
+        }
+        platform_cache.set("dashboard", result)
+        return result
 
     def fetch_users():
         return sb.table("users").select("id, role, status, institution_id, email, full_name, created_at").execute()
@@ -53,23 +96,29 @@ async def platform_dashboard(admin: dict = Depends(require_platform_admin)):
     pending = pending_res.data or []
 
     by_institution: dict[str, int] = {}
+    by_role: dict[str, int] = {}
     unlinked = 0
     for u in users:
+        r = u.get("role") or "unknown"
+        by_role[r] = by_role.get(r, 0) + 1
         if u.get("institution_id"):
             iid = u["institution_id"]
             by_institution[iid] = by_institution.get(iid, 0) + 1
         elif u.get("role") not in ("platform_admin",):
             unlinked += 1
 
-    return {
+    result = {
         "total_users": len(users),
         "total_institutions": len(institutions),
         "active_institutions": sum(1 for i in institutions if i.get("is_active")),
         "pending_requests": len(pending),
         "unlinked_users": unlinked,
         "users_by_institution": by_institution,
+        "users_by_role": by_role,
         "recent_users": sorted(users, key=lambda x: x.get("created_at") or "", reverse=True)[:10],
     }
+    platform_cache.set("dashboard", result)
+    return result
 
 
 @router.get("/users")
@@ -121,7 +170,23 @@ async def platform_update_user(
         updates["role"] = body.role
 
     sb = get_supabase()
-    sb.table("users").update(updates).eq("id", user_id).execute()
+    result = sb.table("users").update(updates).eq("id", user_id).select("id, status").execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    invalidate_user_cache(user_id)
+    platform_cache.invalidate("dashboard")
+
+    if body.status in ("approved", "rejected"):
+        req_updates: dict = {
+            "status": "approved" if body.status == "approved" else "rejected",
+            "reviewed_by": admin["id"],
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if body.status == "rejected":
+            req_updates["rejection_reason"] = "Actualizado por administrador de plataforma"
+        sb.table("registration_requests").update(req_updates).eq("user_id", user_id).execute()
+
     return {"updated": True}
 
 
@@ -137,55 +202,10 @@ async def platform_create_institution(
     body: InstitutionCreate,
     admin: dict = Depends(require_platform_admin),
 ):
-    slug = _slugify(body.slug or body.name)
-    if not slug:
-        raise HTTPException(status_code=400, detail="Slug inválido")
-    if len(body.manager_password) < 8:
-        raise HTTPException(status_code=400, detail="Contraseña del gestor debe tener al menos 8 caracteres")
-
-    sb = get_supabase()
-
-    existing = sb.table("institutions").select("id").eq("slug", slug).execute()
-    if existing.data:
-        raise HTTPException(status_code=409, detail="Ya existe una institución con ese slug")
-
-    inst_result = sb.table("institutions").insert({
-        "name": body.name,
-        "slug": slug,
-        "is_active": True,
-        "managed_by": admin["id"],
-    }).execute()
-    institution = inst_result.data[0]
-
-    try:
-        auth_resp = sb.auth.admin.create_user({
-            "email": body.manager_email,
-            "password": body.manager_password,
-            "email_confirm": True,
-            "user_metadata": {"full_name": body.manager_full_name},
-        })
-    except Exception as e:
-        sb.table("institutions").delete().eq("id", institution["id"]).execute()
-        raise HTTPException(status_code=400, detail=f"No se pudo crear el gestor: {e}")
-
-    manager_user = auth_resp.user
-    if not manager_user:
-        sb.table("institutions").delete().eq("id", institution["id"]).execute()
-        raise HTTPException(status_code=500, detail="Error al crear usuario gestor")
-
-    sb.table("users").upsert({
-        "id": manager_user.id,
-        "email": body.manager_email,
-        "full_name": body.manager_full_name,
-        "role": "admin",
-        "status": "approved",
-        "institution_id": institution["id"],
-    }, on_conflict="id").execute()
-
-    return {
-        "institution": institution,
-        "manager": {"id": manager_user.id, "email": body.manager_email},
-    }
+    raise HTTPException(
+        status_code=410,
+        detail="La plataforma es exclusiva para UTB. No se pueden crear nuevas instituciones.",
+    )
 
 
 @router.patch("/institutions/{institution_id}")

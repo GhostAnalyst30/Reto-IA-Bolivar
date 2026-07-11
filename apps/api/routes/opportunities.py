@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
-from routes.deps import require_student, require_admin, effective_institution_id
+from routes.deps import require_student, require_institutional, effective_institution_id
 from services.recommendation_service import recommend_opportunities
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
@@ -18,6 +18,18 @@ class OpportunityCreate(BaseModel):
     tags: list[str] = []
     deadline: str | None = None
     external_url: str | None = None
+
+
+class OpportunityPatch(BaseModel):
+    type: str | None = None
+    title: str | None = None
+    description: str | None = None
+    requirements: list[str] | None = None
+    area: str | None = None
+    tags: list[str] | None = None
+    deadline: str | None = None
+    external_url: str | None = None
+    is_active: bool | None = None
 
 
 @router.get("")
@@ -106,7 +118,7 @@ async def unsave_opportunity(opp_id: str, user: dict = Depends(require_student))
 
 @admin_router.get("/list")
 async def admin_list(
-    user: dict = Depends(require_admin),
+    user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -120,7 +132,7 @@ async def admin_list(
 @admin_router.post("")
 async def admin_create(
     body: OpportunityCreate,
-    user: dict = Depends(require_admin),
+    user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -134,10 +146,31 @@ async def admin_create(
     return result.data[0]
 
 
+@admin_router.patch("/{opp_id}")
+async def admin_update(
+    opp_id: str,
+    body: OpportunityPatch,
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+):
+    sb = get_supabase()
+    opp = sb.table("opportunities").select("id, institution_id").eq("id", opp_id).single().execute()
+    if not opp.data:
+        raise HTTPException(status_code=404)
+    inst = effective_institution_id(user, institution_id)
+    if inst and opp.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403, detail="Oportunidad fuera de su institución")
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Sin cambios")
+    result = sb.table("opportunities").update(updates).eq("id", opp_id).execute()
+    return result.data[0] if result.data else {"updated": True}
+
+
 @admin_router.delete("/{opp_id}")
 async def admin_delete(
     opp_id: str,
-    user: dict = Depends(require_admin),
+    user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
-import { BentoCell } from '@/components/ui/BentoGrid';
+import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { getDefaultPath } from '@/lib/utils';
 import { registerUserSession } from '@/lib/session-client';
@@ -63,8 +63,7 @@ export default function LoginClient() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4">
-      <BentoCell animate={false} className="relative w-full max-w-md">
+    <ClayFormCard>
         <Link href="/" aria-label="Inicio">
           <UtbLogo />
         </Link>
@@ -74,7 +73,7 @@ export default function LoginClient() {
             : 'Portal institucional — personal autorizado UTB'}
         </p>
 
-        <div className="mt-6 grid grid-cols-2 gap-2 rounded-sm border border-brand-border p-1">
+        <div className="mt-6 grid grid-cols-2 gap-2 rounded-[var(--public-radius-md)] border border-brand-border p-1 clay-input">
           <button
             type="button"
             onClick={() => setPortal('student')}
@@ -118,7 +117,7 @@ export default function LoginClient() {
           <div className="text-right">
             <Link href="/forgot-password" className="text-sm text-brand-blue-mid hover:underline">¿Olvidaste tu contraseña?</Link>
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </Button>
@@ -130,7 +129,6 @@ export default function LoginClient() {
             <p><Link href="/register/institutional" className="text-brand-amber hover:underline">Registro personal institucional</Link></p>
           )}
         </div>
-      </BentoCell>
-    </div>
+    </ClayFormCard>
   );
 }

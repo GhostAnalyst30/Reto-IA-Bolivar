@@ -6,7 +6,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "dev:web": "pnpm --filter @reto/web dev",
-    "dev:api": "cd apps/api && python -m uvicorn main:app --reload --port 8000"
+    "dev:api": "cd apps/api && python -m uvicorn main:app --reload --port 8000",
+    "load-test": "node scripts/load-test/run.mjs"
   },
   "devDependencies": {
     "turbo": "^2.3.3"

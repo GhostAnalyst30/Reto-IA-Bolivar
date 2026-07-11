@@ -21,7 +21,7 @@ Microservicio de la **Universidad Tecnológica de Bolívar** con portal estudian
 
 ## Stack
 
-Next.js 14 · FastAPI · Supabase (Auth + PostgreSQL + RLS) · OpenRouter · Resend
+Next.js 14 · FastAPI · Supabase (Auth + PostgreSQL + RLS) · OpenRouter · Brevo
 
 ## Inicio rápido
 

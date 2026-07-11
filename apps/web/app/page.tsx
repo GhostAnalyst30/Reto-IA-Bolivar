@@ -1,26 +1,22 @@
-import { SiteHeader, SiteFooter } from '@/components/layout/SiteHeader';
+import { PublicSiteShell } from '@/components/immersive/layout/PublicSiteShell';
 import {
   HeroSection,
-  ProblemSolutionNarrative,
+  ProblemSolutionSection,
   ModuleBentoGrid,
   ExperienceShowcase,
-  KpiCarousel,
-  FinalCta,
-} from '@/components/landing/sections';
+  KpiSection,
+  FinalCtaSection,
+} from '@/components/immersive/sections';
 
 export default function HomePage() {
   return (
-    <>
-      <SiteHeader />
-      <main>
-        <HeroSection />
-        <ProblemSolutionNarrative />
-        <ModuleBentoGrid />
-        <ExperienceShowcase />
-        <KpiCarousel />
-        <FinalCta />
-      </main>
-      <SiteFooter />
-    </>
+    <PublicSiteShell variant="narrative" showProgressBar>
+      <HeroSection />
+      <ProblemSolutionSection />
+      <ModuleBentoGrid />
+      <ExperienceShowcase />
+      <KpiSection />
+      <FinalCtaSection />
+    </PublicSiteShell>
   );
 }

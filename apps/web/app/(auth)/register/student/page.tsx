@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
-import { BentoCell } from '@/components/ui/BentoGrid';
+import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { isUtbEmail } from '@/lib/utb-auth';
 
@@ -46,7 +46,10 @@ export default function RegisterStudentPage() {
         return;
       }
 
-      sessionStorage.setItem('pending_confirmation', JSON.stringify({ email, full_name: fullName }));
+      sessionStorage.setItem(
+        'pending_confirmation',
+        JSON.stringify({ email, full_name: fullName, email_sent: data.email_sent !== false })
+      );
       router.push(`/register/check-email?email=${encodeURIComponent(email)}`);
     } catch {
       setError('Error de conexión');
@@ -55,8 +58,7 @@ export default function RegisterStudentPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4 py-12">
-      <BentoCell animate={false} className="w-full max-w-md">
+    <ClayFormCard>
         <Link href="/" aria-label="Inicio"><UtbLogo /></Link>
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Registro estudiante</h1>
         <p className="mt-2 text-sm text-muted">
@@ -73,7 +75,6 @@ export default function RegisterStudentPage() {
           <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted"><Link href="/login" className="text-brand-amber hover:underline">¿Ya tienes cuenta?</Link></p>
-      </BentoCell>
-    </div>
+    </ClayFormCard>
   );
 }

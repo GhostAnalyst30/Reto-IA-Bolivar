@@ -1,13 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
+import { PortalCard } from '@/components/portal/PortalCard';
 import { proxyJson } from '@/lib/proxy';
+import { GraduationCap, ExternalLink } from 'lucide-react';
+
+interface Curricula {
+  id: string;
+  title: string;
+  file_url?: string;
+}
 
 interface Program {
   id: string;
   name: string;
   description?: string;
+  program_curricula?: Curricula[];
 }
 
 export default function ProgramsPage() {
@@ -20,21 +28,43 @@ export default function ProgramsPage() {
   }, []);
 
   return (
-    <div>
-      <h1 className="font-display mb-6 text-2xl font-bold">Programas académicos UTB</h1>
-      <BentoGrid cols={2}>
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl font-bold">Programas académicos UTB</h1>
+        <p className="text-muted">Consulta la información de los programas de la universidad</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
         {programs.map((p) => (
-          <BentoCell key={p.id}>
-            <h2 className="font-semibold">{p.name}</h2>
-            {p.description && <p className="mt-2 text-sm text-zinc-500">{p.description}</p>}
-          </BentoCell>
+          <PortalCard key={p.id}>
+            <div className="flex items-start gap-3">
+              <GraduationCap className="h-6 w-6 text-brand-amber shrink-0" />
+              <div>
+                <h2 className="font-semibold text-lg">{p.name}</h2>
+                {p.description && <p className="mt-2 text-sm text-muted">{p.description}</p>}
+                {p.program_curricula && p.program_curricula.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {p.program_curricula.map((c) => (
+                      <li key={c.id} className="text-sm">
+                        {c.file_url ? (
+                          <a href={c.file_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-brand-amber hover:underline">
+                            {c.title} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : c.title}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </PortalCard>
         ))}
         {programs.length === 0 && (
-          <BentoCell colSpan={2}>
-            <p className="text-zinc-500">No hay programas disponibles. Contacte al administrador.</p>
-          </BentoCell>
+          <PortalCard className="md:col-span-2">
+            <p className="text-muted">No hay programas disponibles. Contacte al administrador.</p>
+          </PortalCard>
         )}
-      </BentoGrid>
+      </div>
     </div>
   );
 }

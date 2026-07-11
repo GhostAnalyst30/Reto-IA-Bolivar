@@ -43,12 +43,24 @@ export function isPathAllowed(path: string, role: string): boolean {
     return true;
   }
 
+  // Solicitudes de registro: cualquier rol institucional puede aprobar/denegar
+  if (path.startsWith('/admin/requests')) {
+    return (
+      role === PLATFORM_ADMIN_ROLE
+      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
+    );
+  }
+
   if (path.startsWith(ADMIN_PREFIX)) {
     return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
   }
 
+  // Gestión de oportunidades/recursos: directivos y admins
   if (path.startsWith('/opportunities/admin')) {
-    return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
+    return (
+      role === PLATFORM_ADMIN_ROLE
+      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
+    );
   }
 
   if (INSTITUTIONAL_PREFIXES.some((p) => path.startsWith(p))) {

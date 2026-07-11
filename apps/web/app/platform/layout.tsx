@@ -13,12 +13,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   }
 
   return (
-    <PlatformShell
-      title="Administración de Plataforma"
-      subtitle={profile.full_name || profile.email}
-      role={profile.role}
-      nav={PLATFORM_FULL_NAV}
-    >
+    <PlatformShell role={profile.role} nav={PLATFORM_FULL_NAV}>
       {children}
     </PlatformShell>
   );

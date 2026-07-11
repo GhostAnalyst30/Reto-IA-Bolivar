@@ -1,12 +1,8 @@
 """Real-time institutional analytics from live user data."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from core.cache import TTLCache
-from core.parallel import run_parallel
+from core.cache import dashboard_cache
 from core.supabase_client import get_supabase
-from services.risk_service import get_latest_risk_by_institution
-
-_dashboard_cache = TTLCache(ttl_seconds=60.0)
 
 
 def _institution_id(user: dict) -> str | None:
@@ -16,71 +12,24 @@ def _institution_id(user: dict) -> str | None:
 def _compute_dashboard_impl(inst: str) -> dict:
     sb = get_supabase()
 
-    students = sb.table("users").select("id, created_at", count="exact").eq(
-        "institution_id", inst
-    ).eq("role", "student").eq("status", "approved").execute()
+    stats: dict = {}
+    try:
+        rpc = sb.rpc("institution_dashboard_stats", {"p_institution_id": inst}).execute()
+        stats = rpc.data or {}
+    except Exception:
+        stats = {}
 
-    enrollment = students.count or len(students.data or [])
-    student_ids = [s["id"] for s in (students.data or [])]
-
-    chats_count = 0
-    messages_count = 0
-    vocational_count = 0
-    saved_count = 0
-    active_7d = 0
-    avg_progress = 0.0
-
-    if student_ids:
-        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-
-        def fetch_chats():
-            return sb.table("chats").select("id, user_id, updated_at").in_("user_id", student_ids).execute()
-
-        def fetch_psych():
-            try:
-                return sb.table("psychometric_assessments").select("id", count="exact").eq(
-                    "institution_id", inst
-                ).eq("status", "completed").execute()
-            except Exception:
-                return None
-
-        def fetch_saved():
-            return sb.table("saved_resources").select("id", count="exact").in_("user_id", student_ids).execute()
-
-        def fetch_progress():
-            return sb.table("student_progress").select("progress_percent").in_("user_id", student_ids).execute()
-
-        chats, psych, saved, progress_result = run_parallel(
-            fetch_chats, fetch_psych, fetch_saved, fetch_progress
-        )
-
-        chats_count = len(chats.data or [])
-        active_users = {c["user_id"] for c in (chats.data or []) if c.get("updated_at", "") >= week_ago}
-        active_7d = len(active_users)
-
-        chat_ids = [c["id"] for c in (chats.data or [])]
-        if chat_ids:
-            msgs = sb.table("messages").select("id", count="exact").in_("chat_id", chat_ids).execute()
-            messages_count = msgs.count or 0
-
-        if psych:
-            vocational_count = psych.count or 0
-        saved_count = saved.count or 0
-
-        if progress_result and progress_result.data:
-            avg_progress = sum(p.get("progress_percent", 0) for p in progress_result.data) / len(progress_result.data)
+    enrollment = int(stats.get("enrollment") or 0)
+    active_7d = int(stats.get("active_7d") or 0)
+    chats_count = int(stats.get("chats_count") or 0)
+    messages_count = int(stats.get("messages_count") or 0)
+    vocational_count = int(stats.get("psychometric_count") or 0)
+    saved_count = int(stats.get("saved_count") or 0)
+    avg_progress = float(stats.get("avg_progress") or 0.0)
+    avg_risk_score = float(stats.get("avg_risk_score") or 0.0)
+    at_risk = int(stats.get("at_risk_count") or max(0, enrollment - active_7d))
 
     retention = min(99.9, round(70 + (avg_progress * 0.25) + (active_7d / max(enrollment, 1) * 15), 1))
-    at_risk = max(0, enrollment - active_7d)
-
-    avg_risk_score = 0.0
-    try:
-        risk_rows = get_latest_risk_by_institution(inst)
-        if risk_rows:
-            avg_risk_score = sum(r.get("risk_score", 0) for r in risk_rows) / len(risk_rows)
-            at_risk = sum(1 for r in risk_rows if r.get("risk_level") in ("alto", "moderado"))
-    except Exception:
-        pass
 
     kpis = [
         {"metric_name": "enrollment", "metric_value": enrollment, "metric_unit": "students", "period": "live"},
@@ -153,6 +102,10 @@ def _compute_dashboard_impl(inst: str) -> dict:
     }
 
 
+def invalidate_dashboard(institution_id: str) -> None:
+    dashboard_cache.invalidate(institution_id)
+
+
 def compute_dashboard(user: dict) -> dict:
     inst = _institution_id(user)
     if not inst:
@@ -166,10 +119,10 @@ def compute_dashboard(user: dict) -> dict:
             "prediction": {},
         }
 
-    cached = _dashboard_cache.get(inst)
+    cached = dashboard_cache.get(inst)
     if cached is not None:
         return cached
 
     result = _compute_dashboard_impl(inst)
-    _dashboard_cache.set(inst, result)
+    dashboard_cache.set(inst, result)
     return result

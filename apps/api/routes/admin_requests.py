@@ -6,7 +6,14 @@ from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
 from core.email_notify import notify_account_approved, notify_account_rejected
-from routes.deps import require_admin, is_platform_admin, effective_institution_id, is_institution_admin
+from core.db_helpers import require_updated
+from routes.deps import (
+    require_admin,
+    require_institutional,
+    is_platform_admin,
+    effective_institution_id,
+    is_institution_admin,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -32,7 +39,7 @@ class AuthKeyCreate(BaseModel):
 
 @router.get("/requests")
 async def list_requests(
-    admin: dict = Depends(require_admin),
+    admin: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -49,7 +56,7 @@ async def list_requests(
 
 
 @router.post("/requests/{request_id}/approve")
-async def approve_request(request_id: str, admin: dict = Depends(require_admin)):
+async def approve_request(request_id: str, admin: dict = Depends(require_institutional)):
     sb = get_supabase()
     req = sb.table("registration_requests").select("*").eq("id", request_id).single().execute()
     if not req.data or req.data["status"] != "pending":
@@ -67,18 +74,20 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
 
     now = datetime.now(timezone.utc).isoformat()
 
-    sb.table("users").update({
+    user_update = sb.table("users").update({
         "status": "approved",
         "role": data["requested_role"],
         "institution_id": data["institution_id"],
         "updated_at": now,
-    }).eq("id", data["user_id"]).execute()
+    }).eq("id", data["user_id"]).select("id, status").execute()
+    require_updated(user_update, "usuario")
 
-    sb.table("registration_requests").update({
+    req_update = sb.table("registration_requests").update({
         "status": "approved",
         "reviewed_by": admin["id"],
         "reviewed_at": now,
-    }).eq("id", request_id).execute()
+    }).eq("id", request_id).select("id, status").execute()
+    require_updated(req_update, "solicitud")
 
     if data.get("auth_key_id"):
         key_row = sb.table("role_auth_keys").select("uses_count").eq("id", data["auth_key_id"]).single().execute()
@@ -99,7 +108,7 @@ async def approve_request(request_id: str, admin: dict = Depends(require_admin))
 
 
 @router.post("/requests/{request_id}/reject")
-async def reject_request(request_id: str, body: RejectBody, admin: dict = Depends(require_admin)):
+async def reject_request(request_id: str, body: RejectBody, admin: dict = Depends(require_institutional)):
     sb = get_supabase()
     req = sb.table("registration_requests").select("*").eq("id", request_id).single().execute()
     if not req.data or req.data["status"] != "pending":
@@ -110,13 +119,15 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
             raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
-    sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", req.data["user_id"]).execute()
-    sb.table("registration_requests").update({
+    user_update = sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", req.data["user_id"]).select("id, status").execute()
+    require_updated(user_update, "usuario")
+    req_update = sb.table("registration_requests").update({
         "status": "rejected",
         "rejection_reason": body.reason,
         "reviewed_by": admin["id"],
         "reviewed_at": now,
-    }).eq("id", request_id).execute()
+    }).eq("id", request_id).select("id, status").execute()
+    require_updated(req_update, "solicitud")
 
     user_row = sb.table("users").select("email, full_name").eq("id", req.data["user_id"]).single().execute()
     if user_row.data and user_row.data.get("email"):
@@ -254,6 +265,25 @@ class ProgramCreate(BaseModel):
     faculty_id: str | None = None
 
 
+class ResourceCreate(BaseModel):
+    title: str
+    description: str | None = None
+    url: str
+    topic: str | None = None
+    category: str | None = None
+    resource_type: str = "link"
+
+
+class ResourcePatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    url: str | None = None
+    topic: str | None = None
+    category: str | None = None
+    resource_type: str | None = None
+    is_active: bool | None = None
+
+
 @router.get("/programs")
 async def admin_list_programs(
     admin: dict = Depends(require_admin),
@@ -320,11 +350,84 @@ async def admin_delete_program(program_id: str, admin: dict = Depends(require_ad
 async def run_scraper(
     admin: dict = Depends(require_admin),
     institution_id: str | None = Query(None),
+    target: str = Query("general", description="general | utb_biblioteca"),
 ):
-    from services.resource_scraper import search_external
+    from services.resource_scraper import search_external, scrape_utb_biblioteca
     inst = effective_institution_id(admin, institution_id)
-    results = await search_external("programación python", inst)
-    return {"indexed": len(results)}
+    if target == "utb_biblioteca":
+        results = await scrape_utb_biblioteca(inst)
+    else:
+        results = await search_external("programación python", inst)
+    return {"indexed": len(results), "target": target}
+
+
+@router.get("/resources")
+async def admin_list_resources(
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(admin, institution_id)
+    query = sb.table("resources").select("*").order("created_at", desc=True)
+    if inst:
+        query = query.eq("institution_id", inst)
+    return query.limit(200).execute().data or []
+
+
+@router.post("/resources")
+async def admin_create_resource(
+    body: ResourceCreate,
+    admin: dict = Depends(require_admin),
+    institution_id: str | None = Query(None),
+):
+    inst = effective_institution_id(admin, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+    sb = get_supabase()
+    result = sb.table("resources").insert({
+        "institution_id": inst,
+        "title": body.title,
+        "description": body.description,
+        "url": body.url,
+        "topic": body.topic,
+        "category": body.category,
+        "resource_type": body.resource_type,
+        "source": "admin",
+    }).execute()
+    return result.data[0]
+
+
+@router.patch("/resources/{resource_id}")
+async def admin_update_resource(
+    resource_id: str,
+    body: ResourcePatch,
+    admin: dict = Depends(require_admin),
+):
+    sb = get_supabase()
+    existing = sb.table("resources").select("id, institution_id").eq("id", resource_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
+    scope = _admin_scope_institution(admin)
+    if scope is not None and existing.data.get("institution_id") != scope:
+        raise HTTPException(status_code=403, detail="Recurso fuera de su institución")
+    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Sin cambios")
+    sb.table("resources").update(updates).eq("id", resource_id).execute()
+    return {"updated": True}
+
+
+@router.delete("/resources/{resource_id}")
+async def admin_delete_resource(resource_id: str, admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    existing = sb.table("resources").select("id, institution_id").eq("id", resource_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
+    scope = _admin_scope_institution(admin)
+    if scope is not None and existing.data.get("institution_id") != scope:
+        raise HTTPException(status_code=403, detail="Recurso fuera de su institución")
+    sb.table("resources").delete().eq("id", resource_id).execute()
+    return {"deleted": True}
 
 
 @router.get("/reports/weekly-data")

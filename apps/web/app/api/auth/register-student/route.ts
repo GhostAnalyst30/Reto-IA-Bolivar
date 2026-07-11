@@ -27,11 +27,20 @@ export async function POST(request: NextRequest) {
 
     const userId = await createAuthUser(email, password, full_name);
 
-    await callBackendRegister('/register/student', {
+    const registerResult = await callBackendRegister('/register/student', {
       user_id: userId,
       email,
       full_name,
     });
+
+    if (registerResult?.status === 'approved') {
+      return NextResponse.json({
+        sent: true,
+        already_approved: true,
+        email_sent: false,
+        user_id: userId,
+      });
+    }
 
     // El envío de correo no debe abortar el registro: la cuenta ya existe y el
     // usuario puede reenviar la confirmación desde la pantalla de verificación.

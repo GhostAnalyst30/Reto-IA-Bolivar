@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
-import { BentoCell } from '@/components/ui/BentoGrid';
+import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 
 export default function ResetPasswordPage() {
@@ -39,8 +39,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4">
-      <BentoCell animate={false} className="w-full max-w-md">
+    <ClayFormCard>
         <Link href="/" aria-label="Inicio"><UtbLogo /></Link>
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Nueva contraseña</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -52,12 +51,11 @@ export default function ResetPasswordPage() {
             <Label htmlFor="confirm">Confirmar</Label>
             <PasswordInput id="confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} />
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Guardando…' : 'Guardar contraseña'}
           </Button>
         </form>
-      </BentoCell>
-    </div>
+    </ClayFormCard>
   );
 }

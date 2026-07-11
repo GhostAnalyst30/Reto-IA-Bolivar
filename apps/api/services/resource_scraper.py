@@ -113,6 +113,57 @@ async def scrape_edx(query: str, limit: int = 3) -> list[dict]:
     return results
 
 
+async def scrape_utb_biblioteca(institution_id: str | None = None) -> list[dict]:
+    """Scrape links from UTB Biblioteca Digital."""
+    base_url = "https://www.utb.edu.co/biblioteca-utb/biblioteca-digital/"
+    results: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            res = await client.get(base_url, headers={"User-Agent": "UTB-Te-Acompana-Bot/1.0"})
+            if res.status_code != 200:
+                return []
+            # Extract href links with meaningful text
+            links = re.findall(
+                r'<a[^>]+href="([^"]+)"[^>]*>([^<]{4,120})</a>',
+                res.text,
+                re.IGNORECASE,
+            )
+            seen: set[str] = set()
+            for href, title in links:
+                title = re.sub(r"\s+", " ", title).strip()
+                if not title or len(title) < 4:
+                    continue
+                if href.startswith("#") or href.startswith("javascript"):
+                    continue
+                if href.startswith("/"):
+                    url = f"https://www.utb.edu.co{href}"
+                elif href.startswith("http"):
+                    url = href
+                else:
+                    continue
+                if "utb.edu.co" not in url and not any(
+                    d in url for d in ("doi.org", "redalyc", "scielo", "jstor", "ebsco", "proquest")
+                ):
+                    continue
+                if url in seen:
+                    continue
+                seen.add(url)
+                results.append({
+                    "title": title[:500],
+                    "description": f"Recurso de la Biblioteca Digital UTB: {title[:200]}",
+                    "url": url,
+                    "topic": "biblioteca",
+                    "category": "biblioteca",
+                    "resource_type": "link",
+                    "source": "utb_biblioteca",
+                })
+                if len(results) >= 40:
+                    break
+    except Exception:
+        pass
+    return await persist_resources(results, institution_id)
+
+
 async def search_external(query: str, institution_id: str | None = None) -> list[dict]:
     if not settings.scraper_enabled:
         return []
@@ -141,6 +192,7 @@ async def persist_resources(items: list[dict], institution_id: str | None) -> li
             "description": item.get("description", "")[:1000],
             "url": item["url"],
             "topic": item.get("topic", "general"),
+            "category": item.get("category", "general"),
             "resource_type": item.get("resource_type", "article"),
             "source": item.get("source", "scraped"),
             "scraped_at": now,

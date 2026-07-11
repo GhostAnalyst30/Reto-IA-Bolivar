@@ -89,6 +89,18 @@ async def list_institutions():
         raise HTTPException(status_code=503, detail="No se pudieron cargar instituciones")
 
 
+def _get_existing_user(sb, user_id: str) -> dict | None:
+    result = sb.table("users").select("id, status, role").eq("id", user_id).limit(1).execute()
+    rows = result.data or []
+    return rows[0] if rows else None
+
+
+def _get_existing_request(sb, user_id: str) -> dict | None:
+    result = sb.table("registration_requests").select("id, status").eq("user_id", user_id).limit(1).execute()
+    rows = result.data or []
+    return rows[0] if rows else None
+
+
 @router.post("/register/student")
 async def register_student(
     body: StudentRegister,
@@ -100,14 +112,23 @@ async def register_student(
     _validate_utb_email(body.email)
     institution_id = _get_utb_institution_id(sb)
 
-    sb.table("users").upsert({
+    existing = _get_existing_user(sb, body.user_id)
+    existing_req = _get_existing_request(sb, body.user_id)
+
+    if existing and existing.get("status") == "approved":
+        return {"status": "approved", "message": "Tu cuenta ya está aprobada. Inicia sesión."}
+    if existing_req and existing_req.get("status") == "approved":
+        return {"status": "approved", "message": "Tu solicitud ya fue aprobada. Inicia sesión."}
+
+    user_row = {
         "id": body.user_id,
         "email": body.email,
         "full_name": body.full_name,
         "institution_id": institution_id,
         "role": "student",
         "status": "pending",
-    }, on_conflict="id").execute()
+    }
+    sb.table("users").upsert(user_row, on_conflict="id").execute()
 
     sb.table("registration_requests").upsert({
         "user_id": body.user_id,
@@ -154,6 +175,13 @@ async def register_institutional(
             details={"role": body.requested_role, "email": body.email},
         )
         raise HTTPException(status_code=403, detail="Clave de registro inválida o expirada")
+
+    existing = _get_existing_user(sb, body.user_id)
+    existing_req = _get_existing_request(sb, body.user_id)
+    if existing and existing.get("status") == "approved":
+        return {"status": "approved", "message": "Tu cuenta ya está aprobada. Inicia sesión."}
+    if existing_req and existing_req.get("status") == "approved":
+        return {"status": "approved", "message": "Tu solicitud ya fue aprobada. Inicia sesión."}
 
     sb.table("users").upsert({
         "id": body.user_id,

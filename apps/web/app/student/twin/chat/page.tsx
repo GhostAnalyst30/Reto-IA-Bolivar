@@ -3,8 +3,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
+import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
 import { BentoCell } from '@/components/ui/BentoGrid';
-import { Send, Plus, MessageSquare, Heart, Loader2, Phone } from 'lucide-react';
+import { Send, Plus, MessageSquare, Heart, Loader2, Phone, AlertCircle } from 'lucide-react';
 import { proxyJson, proxyStream } from '@/lib/proxy';
 
 interface Chat { id: string; title: string; updated_at: string }
@@ -22,15 +23,17 @@ export default function TwinChatPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [supportReason, setSupportReason] = useState('');
   const [error, setError] = useState('');
+  const [limitReached, setLimitReached] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadChats(); loadSelfHelp(); }, []);
+  useEffect(() => { loadChats(); }, []);
   useEffect(() => { if (activeChat) loadMessages(activeChat); }, [activeChat]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  async function loadSelfHelp(topic?: string) {
+  async function loadSelfHelpFromConversation(msgs: Message[], latest?: string) {
     try {
-      const query = (topic || 'bienestar').slice(0, 80);
+      const recent = msgs.filter((m) => m.role === 'user').slice(-3).map((m) => m.content).join(' ');
+      const query = (recent || latest || 'bienestar').slice(0, 200);
       let data = await proxyJson<SelfHelp[]>(`/self-help?topic=${encodeURIComponent(query)}`);
       if ((!Array.isArray(data) || data.length === 0) && query !== 'bienestar') {
         data = await proxyJson<SelfHelp[]>('/self-help?topic=bienestar');
@@ -61,7 +64,10 @@ export default function TwinChatPage() {
   async function loadMessages(chatId: string) {
     try {
       const data = await proxyJson<Message[]>(`/chats/${chatId}/messages`);
-      setMessages(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setMessages(list);
+      setLimitReached(list.filter((m) => m.role === 'user').length >= 15);
+      loadSelfHelpFromConversation(list);
     } catch { setMessages([]); }
   }
 
@@ -73,14 +79,18 @@ export default function TwinChatPage() {
     setChats((c) => [chat, ...c]);
     setActiveChat(chat.id);
     setMessages([]);
+    setLimitReached(false);
+    setError('');
   }
 
   async function send() {
-    if (!input.trim() || !activeChat || streaming) return;
+    if (!input.trim() || !activeChat || streaming || limitReached) return;
     const content = input.trim();
     setInput('');
-    setMessages((m) => [...m, { id: `u-${Date.now()}`, role: 'user', content }]);
+    const nextMsgs = [...messages, { id: `u-${Date.now()}`, role: 'user', content }];
+    setMessages(nextMsgs);
     setStreaming(true);
+    setError('');
     let assistant = '';
     try {
       await proxyStream(`/chats/${activeChat}/messages`, { content }, {
@@ -98,11 +108,19 @@ export default function TwinChatPage() {
           });
         },
       });
-    } catch {
-      setMessages((m) => [...m, { id: `e-${Date.now()}`, role: 'assistant', content: 'Lo siento, no pude responder. Intenta de nuevo.' }]);
+      const userCount = nextMsgs.filter((m) => m.role === 'user').length;
+      if (userCount >= 15) setLimitReached(true);
+      loadSelfHelpFromConversation(nextMsgs, content);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('409') || msg.toLowerCase().includes('nuevo chat') || msg.toLowerCase().includes('15')) {
+        setLimitReached(true);
+        setError('Has alcanzado el límite de 15 mensajes. Inicia una conversación nueva para continuar.');
+      } else {
+        setMessages((m) => [...m, { id: `e-${Date.now()}`, role: 'assistant', content: 'Lo siento, no pude responder. Intenta de nuevo.' }]);
+      }
     }
     setStreaming(false);
-    loadSelfHelp(content);
   }
 
   async function submitMood(score: number) {
@@ -123,6 +141,16 @@ export default function TwinChatPage() {
   return (
     <div className="space-y-4">
       <PrivacyBanner />
+      {limitReached && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Límite de conversación alcanzado</p>
+            <p className="text-xs text-muted">Para continuar el acompañamiento, inicia un chat nuevo.</p>
+          </div>
+          <Button size="sm" onClick={newChat}><Plus className="h-4 w-4 mr-1" />Nuevo chat</Button>
+        </div>
+      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:h-[calc(100vh-10rem)]">
         <aside className="w-full lg:w-48 shrink-0 space-y-2">
           <Button size="sm" variant="secondary" onClick={newChat} className="w-full">
@@ -155,7 +183,7 @@ export default function TwinChatPage() {
                 <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
                   m.role === 'user' ? 'bg-brand-amber/20' : 'border border-brand-border bg-brand-bg'
                 }`}>
-                  {m.content}
+                  {m.role === 'assistant' ? <MarkdownMessage content={m.content} /> : m.content}
                 </div>
               </div>
             ))}
@@ -165,21 +193,15 @@ export default function TwinChatPage() {
           <div className="border-t border-brand-border p-3 space-y-2">
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  title={`Ánimo ${s}/5`}
-                  onClick={() => submitMood(s)}
-                  className={`text-lg ${mood === s ? 'scale-125' : 'opacity-50 hover:opacity-100'}`}
-                >
+                <button key={s} type="button" title={`Ánimo ${s}/5`} onClick={() => submitMood(s)}
+                  className={`text-lg ${mood === s ? 'scale-125' : 'opacity-50 hover:opacity-100'}`}>
                   {['😔', '😕', '😐', '🙂', '😊'][s - 1]}
                 </button>
               ))}
-              <span className="text-xs text-zinc-500 self-center ml-2">Estado de ánimo (opcional)</span>
             </div>
             <div className="flex gap-2">
-              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe aquí..." onKeyDown={(e) => e.key === 'Enter' && send()} />
-              <Button onClick={send} disabled={streaming}><Send className="h-4 w-4" /></Button>
+              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe aquí..." onKeyDown={(e) => e.key === 'Enter' && send()} disabled={limitReached} />
+              <Button onClick={send} disabled={streaming || limitReached}><Send className="h-4 w-4" /></Button>
             </div>
             <Button variant="secondary" size="sm" onClick={() => setShowSupport(true)} className="w-full">
               <Phone className="h-4 w-4 mr-2" /> Solicitar apoyo humano
@@ -191,7 +213,7 @@ export default function TwinChatPage() {
           <Card>
             <h3 className="font-semibold text-sm mb-3">Recursos de autoayuda</h3>
             {selfHelp.length === 0 ? (
-              <p className="text-xs text-zinc-500">Los recursos aparecerán según tu conversación.</p>
+              <p className="text-xs text-zinc-500">Los recursos cambian según tu conversación.</p>
             ) : (
               <ul className="space-y-2">
                 {selfHelp.map((r) => (

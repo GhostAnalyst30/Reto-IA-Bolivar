@@ -7,7 +7,6 @@ from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
 from core.llm_router import stream_with_fallback
 from routes.deps import require_student
-from agents.tutor_agent import build_tutor_messages
 from agents.digital_twin_agent import build_digital_twin_messages
 from agents.path_agent import generate_learning_path
 from agents.search_agent import search_resources
@@ -15,6 +14,9 @@ from agents.vocational_agent import get_programs
 from services.resource_scraper import search_external, ingest_urls_from_message
 
 router = APIRouter(tags=["student"])
+
+# Máximo de mensajes del usuario por conversación; luego se sugiere iniciar un chat nuevo
+MAX_USER_MESSAGES_PER_CHAT = 15
 
 
 class ChatCreate(BaseModel):
@@ -113,16 +115,19 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
     if not chat.data:
         raise HTTPException(status_code=404, detail="Chat not found")
 
+    sent = sb.table("messages").select("id", count="exact").eq(
+        "chat_id", chat_id
+    ).eq("role", "user").execute()
+    if (sent.count or 0) >= MAX_USER_MESSAGES_PER_CHAT:
+        raise HTTPException(
+            status_code=409,
+            detail="Esta conversación alcanzó el máximo de 15 mensajes. Inicia un chat nuevo para continuar.",
+        )
+
     sb.table("messages").insert({"chat_id": chat_id, "role": "user", "content": body.content}).execute()
 
     history = sb.table("messages").select("role, content").eq("chat_id", chat_id).order("created_at").execute()
-    chat_type = chat.data.get("chat_type", "digital_twin")
-
-    if chat_type == "tutor":
-        await ingest_urls_from_message(body.content, user.get("institution_id"))
-        messages = await build_tutor_messages(history.data or [], body.content)
-    else:
-        messages, _ = await build_digital_twin_messages(history.data or [], body.content, user["id"])
+    messages, _ = await build_digital_twin_messages(history.data or [], body.content, user["id"])
 
     async def event_generator():
         full = ""
@@ -260,7 +265,10 @@ async def list_mood_checkins(user: dict = Depends(require_student)):
 
 @router.get("/self-help")
 async def self_help_resources(user: dict = Depends(require_student), topic: str = Query("bienestar")):
-    return await search_resources(topic)
+    results = await search_resources(topic)
+    if not results and topic != "bienestar":
+        results = await search_resources("bienestar")
+    return results
 
 
 @router.get("/saved-resources")

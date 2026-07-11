@@ -1,8 +1,8 @@
 import { PlatformShell } from '@/components/layout/PlatformShell';
-import { PortalShell, INSTITUTIONAL_NAV } from '@/components/layout/PortalShell';
+import { PortalShell } from '@/components/layout/PortalShell';
 import { getProfile } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { INSTITUTIONAL_ROLES, PLATFORM_FULL_NAV, isPlatformAdmin } from '@/lib/utils';
+import { INSTITUTIONAL_ROLES, isPlatformAdmin, getInstitutionalNav, PLATFORM_FULL_NAV } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,12 +22,7 @@ export default async function InstitutionalLayout({ children }: { children: Reac
 
   if (isPlatformAdmin(profile.role)) {
     return (
-      <PlatformShell
-        title="Suite Institucional"
-        subtitle={profile.full_name || profile.email}
-        role={profile.role}
-        nav={PLATFORM_FULL_NAV}
-      >
+      <PlatformShell role={profile.role} nav={PLATFORM_FULL_NAV}>
         {children}
       </PlatformShell>
     );
@@ -35,11 +30,10 @@ export default async function InstitutionalLayout({ children }: { children: Reac
 
   return (
     <PortalShell
-      title="Suite Institucional"
-      subtitle={profile.full_name || profile.email}
-      nav={INSTITUTIONAL_NAV}
+      nav={getInstitutionalNav(profile.role)}
       isAdmin={profile.role === 'admin'}
       role={profile.role}
+      portal="institutional"
     >
       {children}
     </PortalShell>

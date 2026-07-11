@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
-import { Button, LoadingState } from '@/components/ui';
+import { PortalButton } from '@/components/portal/PortalButton';
+import { LoadingState } from '@/components/ui';
+import { MetricCard } from '@/components/portal/MetricCard';
+import { PortalCard } from '@/components/portal/PortalCard';
+import { StaggerList, StaggerItem } from '@/components/portal/StaggerList';
 import { proxyJson } from '@/lib/proxy';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -53,8 +56,8 @@ export default function InstitutionalDashboardPage() {
     return (
       <div className="space-y-4">
         <h1 className="font-display text-2xl font-bold">Dashboard UTB</h1>
-        <p className="text-zinc-500">
-          Seleccione la institución UTB en el selector superior para ver estadísticas.
+        <p className="text-muted">
+          Aún no hay datos suficientes. Registre estudiantes o use &quot;Recalcular riesgo&quot; en el módulo de deserción.
         </p>
       </div>
     );
@@ -69,22 +72,25 @@ export default function InstitutionalDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold">Dashboard UTB</h1>
-          <p className="text-zinc-500">Monitoreo de acompañamiento y prevención de deserción</p>
+          <p className="text-muted">Monitoreo de acompañamiento y prevención de deserción</p>
         </div>
         <Link href="/institutional/risk">
-          <Button>Ver reporte de riesgo</Button>
+          <PortalButton>Ver reporte de riesgo</PortalButton>
         </Link>
       </div>
 
-      <BentoGrid cols={3} className="gap-4">
+      <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {data.kpis.slice(0, 6).map((k) => (
-          <BentoCell key={k.metric_name}>
-            <p className="text-sm text-zinc-500 capitalize">{k.metric_name.replace(/_/g, ' ')}</p>
-            <p className="mt-2 text-3xl font-bold text-brand-amber">{k.metric_value}</p>
-            {k.metric_unit && <p className="text-xs text-zinc-500">{k.metric_unit}</p>}
-          </BentoCell>
+          <StaggerItem key={k.metric_name}>
+            <MetricCard
+              label={k.metric_name.replace(/_/g, ' ')}
+              value={String(k.metric_value)}
+              trend={k.metric_unit}
+            />
+          </StaggerItem>
         ))}
-        <BentoCell colSpan={2} className="min-h-[260px]">
+        <StaggerItem className="sm:col-span-2">
+          <PortalCard className="min-h-[260px]">
           <p className="mb-4 font-medium">Matriculación y actividad</p>
           {enrollmentTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
@@ -96,10 +102,12 @@ export default function InstitutionalDashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-zinc-500">Sin datos de matriculación.</p>
+            <p className="text-sm text-muted">Sin datos de matriculación.</p>
           )}
-        </BentoCell>
-        <BentoCell className="min-h-[260px]">
+          </PortalCard>
+        </StaggerItem>
+        <StaggerItem>
+          <PortalCard className="min-h-[260px]">
           <p className="mb-4 font-medium">Engagement</p>
           {engagement.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
@@ -113,19 +121,20 @@ export default function InstitutionalDashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-zinc-500">Sin datos de engagement.</p>
+            <p className="text-sm text-muted">Sin datos de engagement.</p>
           )}
-        </BentoCell>
-      </BentoGrid>
+          </PortalCard>
+        </StaggerItem>
+      </StaggerList>
 
       {avgRisk && Number(avgRisk.metric_value) > 0 && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <p className="font-medium text-red-400">
+          <p className="font-medium text-red-600 dark:text-red-400">
             {avgRisk.metric_value} estudiantes en riesgo detectados
           </p>
-          <Button className="mt-2" size="sm" onClick={() => router.push('/institutional/risk')}>
+          <PortalButton className="mt-2" size="sm" onClick={() => router.push('/institutional/risk')}>
             Revisar casos
-          </Button>
+          </PortalButton>
         </div>
       )}
     </div>

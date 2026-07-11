@@ -1,8 +1,14 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getDefaultPath, getPortalForRole, PLATFORM_ADMIN_ROLE } from '@/lib/utils';
+import {
+  getCachedProfile,
+  getCachedPsychCompleted,
+  setCachedProfile,
+  setCachedPsychCompleted,
+} from '@/lib/middleware-cache';
 
-const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback', '/quienes-somos', '/terminos', '/forgot-password', '/reset-password'];
+const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback', '/auth/confirm', '/quienes-somos', '/terminos', '/forgot-password', '/reset-password'];
 const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval', '/forgot-password', '/reset-password'];
 
 export async function middleware(request: NextRequest) {
@@ -36,7 +42,14 @@ export async function middleware(request: NextRequest) {
 
   if (PUBLIC_PATHS.some(p => path === p || path.startsWith('/api/'))) {
     if (user && AUTH_PATHS.some(p => path.startsWith(p))) {
-      const { data: profile } = await supabase.from('users').select('role, status').eq('id', user.id).single();
+      let profile = getCachedProfile(user.id);
+      if (!profile) {
+        const { data } = await supabase.from('users').select('role, status').eq('id', user.id).single();
+        if (data) {
+          setCachedProfile(user.id, data);
+          profile = getCachedProfile(user.id);
+        }
+      }
       if (profile?.status === 'approved') {
         return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
       }
@@ -51,11 +64,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role, status, institution_id')
-    .eq('id', user.id)
-    .single();
+  let profile = getCachedProfile(user.id);
+  if (!profile) {
+    const { data } = await supabase
+      .from('users')
+      .select('role, status, institution_id')
+      .eq('id', user.id)
+      .single();
+    if (!data) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    setCachedProfile(user.id, data);
+    profile = getCachedProfile(user.id);
+  }
 
   if (!profile) {
     return NextResponse.redirect(new URL('/login', request.url));
@@ -93,7 +114,7 @@ export async function middleware(request: NextRequest) {
     && profile.role !== 'admin'
     && !isPlatformAdmin
   ) {
-    return NextResponse.redirect(new URL('/institutional/analytics', request.url));
+    return NextResponse.redirect(new URL('/institutional/dashboard', request.url));
   }
 
   if (
@@ -102,19 +123,24 @@ export async function middleware(request: NextRequest) {
     !path.startsWith('/student/onboarding') &&
     !path.startsWith('/student/profile')
   ) {
-    try {
-      const { data: psych } = await supabase
-        .from('psychometric_assessments')
-        .select('status')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!psych || psych.status !== 'completed') {
-        if (!path.startsWith('/student/onboarding/survey')) {
-          return NextResponse.redirect(new URL('/student/onboarding/survey', request.url));
-        }
+    let psychCompleted = getCachedPsychCompleted(user.id);
+    if (psychCompleted === null) {
+      try {
+        const { data: psych } = await supabase
+          .from('psychometric_assessments')
+          .select('status')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        psychCompleted = psych?.status === 'completed';
+        setCachedPsychCompleted(user.id, psychCompleted);
+      } catch {
+        psychCompleted = true;
       }
-    } catch {
-      /* table may not exist before migration */
+    }
+    if (!psychCompleted) {
+      if (!path.startsWith('/student/onboarding/survey')) {
+        return NextResponse.redirect(new URL('/student/onboarding/survey', request.url));
+      }
     }
   }
 

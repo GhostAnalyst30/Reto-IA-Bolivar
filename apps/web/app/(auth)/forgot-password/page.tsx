@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button, Input, Label } from '@/components/ui';
-import { BentoCell } from '@/components/ui/BentoGrid';
+import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 
 export default function ForgotPasswordPage() {
@@ -39,8 +39,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4">
-      <BentoCell animate={false} className="relative w-full max-w-md">
+    <ClayFormCard>
         <Link href="/login" aria-label="Inicio"><UtbLogo /></Link>
         <h1 className="mt-6 font-display text-xl font-semibold text-brand-blue">Recuperar contraseña</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -57,7 +56,6 @@ export default function ForgotPasswordPage() {
         <p className="mt-6 text-center text-sm text-muted">
           <Link href="/login" className="text-brand-amber hover:underline">Volver al login</Link>
         </p>
-      </BentoCell>
-    </div>
+    </ClayFormCard>
   );
 }

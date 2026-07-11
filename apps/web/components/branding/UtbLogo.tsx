@@ -1,9 +1,9 @@
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
-export const BRAND_ICON = '/icons/images.png';
-export const BRAND_ICON_SVG = '/icons/images.svg';
-export const BRAND_FAVICON = '/icons/images.ico';
+export const BRAND_ICON = 'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/refs/heads/main/icons/images.png';
+export const BRAND_ICON_SVG = 'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/refs/heads/main/icons/images.svg';
+export const BRAND_FAVICON = 'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/refs/heads/main/icons/images.ico';
 
 interface UtbLogoProps {
   className?: string;
@@ -21,7 +21,7 @@ export function UtbLogo({ className, variant = 'default', showTagline = true }: 
   return (
     <div className={cn('flex items-center gap-2.5', className)} aria-label="Universidad Tecnológica de Bolívar">
       <Image
-        src={BRAND_ICON}
+        src={BRAND_ICON_SVG}
         alt=""
         width={iconSize}
         height={iconSize}

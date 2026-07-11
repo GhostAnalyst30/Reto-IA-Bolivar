@@ -20,6 +20,12 @@ MIGRATIONS = [
     SUPABASE / "002_rls.sql",
     SUPABASE / "003_seed_utb.sql",
 ]
+PATCHES = {
+    "010": SUPABASE / "010_users_management.sql",
+    "009": SUPABASE / "009_performance_indexes.sql",
+    "007": SUPABASE / "007_drop_username.sql",
+    "008": SUPABASE / "008_allow_exception_email.sql",
+}
 RESET = SUPABASE / "000_reset.sql"
 DEMO_SEED = SUPABASE / "005_seed_demo_utb.sql"
 DEMO_ACCOMPANIMENT = SUPABASE / "006_seed_accompaniment_utb.sql"
@@ -65,6 +71,11 @@ def main():
         action="store_true",
         help="Ejecutar seeds demo UTB (005 + 006) tras migraciones base",
     )
+    parser.add_argument(
+        "--patch",
+        metavar="ID",
+        help="Ejecutar un parche incremental (ej: 009 para índices de rendimiento)",
+    )
     args = parser.parse_args()
 
     env_local = ROOT / "apps" / "web" / ".env.local"
@@ -87,23 +98,31 @@ def main():
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
 
     try:
-        files = ([RESET] if args.reset else []) + MIGRATIONS
-        if args.demo:
-            files += [DEMO_SEED, DEMO_ACCOMPANIMENT]
-        print("\nEjecutando scripts SQL:")
-        for path in files:
-            if not path.exists():
-                print(f"  ✗ No encontrado: {path}")
+        if args.patch:
+            patch_path = PATCHES.get(args.patch)
+            if not patch_path:
+                print(f"Parche desconocido: {args.patch}. Disponibles: {', '.join(PATCHES)}")
                 sys.exit(1)
-            try:
-                run_sql_file(conn, path)
-            except psycopg2.Error as e:
-                err = str(e).strip()
-                if "already exists" in err or "duplicate" in err.lower():
-                    print(f"SKIP (ya existe)")
-                else:
-                    print(f"\n  ✗ Error en {path.name}:\n{err}")
+            print(f"\nEjecutando parche {args.patch}:")
+            run_sql_file(conn, patch_path)
+        else:
+            files = ([RESET] if args.reset else []) + MIGRATIONS
+            if args.demo:
+                files += [DEMO_SEED, DEMO_ACCOMPANIMENT]
+            print("\nEjecutando scripts SQL:")
+            for path in files:
+                if not path.exists():
+                    print(f"  ✗ No encontrado: {path}")
                     sys.exit(1)
+                try:
+                    run_sql_file(conn, path)
+                except psycopg2.Error as e:
+                    err = str(e).strip()
+                    if "already exists" in err or "duplicate" in err.lower():
+                        print(f"SKIP (ya existe)")
+                    else:
+                        print(f"\n  ✗ Error en {path.name}:\n{err}")
+                        sys.exit(1)
 
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM institutions")

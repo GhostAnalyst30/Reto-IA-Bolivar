@@ -6,8 +6,7 @@ import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Key, Copy } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
-import { createClient } from '@/lib/supabase/client';
-import { getSelectedInstitutionId } from '@/lib/institution-context';
+import { getSelectedInstitutionId, UTB_INSTITUTION_ID } from '@/lib/institution-context';
 
 interface AuthKey {
   id: string;
@@ -30,24 +29,8 @@ export default function AuthKeysPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    async function init() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase.from('users').select('institution_id, role').eq('id', user.id).single();
-        const inst = profile?.institution_id || getSelectedInstitutionId() || '';
-        if (inst) setInstitutionId(inst);
-      }
-      await load();
-    }
-    init();
-    const onChange = () => {
-      const inst = getSelectedInstitutionId();
-      if (inst) setInstitutionId(inst);
-      load();
-    };
-    window.addEventListener('institution-context-changed', onChange);
-    return () => window.removeEventListener('institution-context-changed', onChange);
+    setInstitutionId(getSelectedInstitutionId());
+    load();
   }, []);
 
   async function load() {
@@ -65,17 +48,14 @@ export default function AuthKeysPage() {
   }
 
   async function generate() {
-    if (!institutionId) {
-      setError('No tiene institución asignada. Contacte al administrador de plataforma.');
-      return;
-    }
+    const inst = institutionId || UTB_INSTITUTION_ID;
     setActionLoading(true);
     setError('');
     try {
       const data = await proxyJson<{ auth_key?: string }>('/admin/auth-keys', {
         method: 'POST',
         body: JSON.stringify({
-          institution_id: institutionId,
+          institution_id: inst,
           role,
           label: `Clave ${ROLE_LABELS[role]}`,
           max_uses: 5,
@@ -114,13 +94,13 @@ export default function AuthKeysPage() {
           <div>
             <Label>Rol</Label>
             <Select value={role} onChange={(e) => setRole(e.target.value)}>
-              {['area_head', 'dean', 'vice_president', 'rector'].map((r) => (
+              {['area_head', 'dean', 'vice_president', 'rector', 'admin'].map((r) => (
                 <option key={r} value={r}>{ROLE_LABELS[r]}</option>
               ))}
             </Select>
           </div>
           <div className="md:col-span-2 flex items-end">
-            <Button onClick={generate} disabled={actionLoading || !institutionId}>
+            <Button onClick={generate} disabled={actionLoading}>
               <Key className="mr-2 h-4 w-4" />{actionLoading ? 'Generando...' : 'Generar clave'}
             </Button>
           </div>
@@ -148,7 +128,9 @@ export default function AuthKeysPage() {
                 <div className="flex gap-2 mt-1">
                   <Badge>{ROLE_LABELS[k.role]}</Badge>
                   <Badge variant="default">{k.uses_count}/{k.max_uses} usos</Badge>
-                  {k.revoked_at && <Badge variant="red">Revocada</Badge>}
+                  {k.revoked_at ? <Badge variant="red">Revocada</Badge>
+                    : k.expires_at && new Date(k.expires_at) < new Date() ? <Badge variant="amber">Expirada</Badge>
+                    : <Badge variant="green">Activa</Badge>}
                 </div>
               </div>
               {!k.revoked_at && (

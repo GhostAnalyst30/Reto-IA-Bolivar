@@ -5,7 +5,7 @@
 - Node.js 18+, pnpm
 - Python 3.11+
 - Proyecto Supabase
-- Cuenta Resend (correos)
+- Cuenta Brevo (correos)
 - OpenRouter API key
 
 ## 2. Supabase — instalación limpia
@@ -56,8 +56,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 API_URL=http://localhost:8000
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 INTERNAL_REGISTER_KEY=mismo-secreto-que-en-api
-RESEND_API_KEY=re_...
-RESEND_FROM_EMAIL=UTB Te acompaña <onboarding@resend.dev>
+BREVO_API_KEY=xkeysib-...
+BREVO_FROM_EMAIL=UTB Te acompaña <noreply@tudominio.com>
 WEEKLY_REPORT_EMAIL=ascendraemmanuel@gmail.com
 CRON_SECRET=genera-un-secreto-cron       # protege /api/cron/weekly-report
 
@@ -164,7 +164,8 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 |----------|:-:|----------|
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | URL del proyecto Supabase (cliente/SSR/middleware) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Clave anónima para login/sesión |
-| `NEXT_PUBLIC_APP_URL` | ✅ | URL pública (`https://tu-app.vercel.app`); base de enlaces en correos |
+| `NEXT_PUBLIC_APP_URL` | ✅ | URL pública (`https://tu-app.vercel.app`) |
+| `EMAIL_APP_URL` | ⬜ (recomendada) | Base de enlaces en correos; en local puede ser Vercel mientras desarrollas |
 
 **Secretas de servidor**
 
@@ -173,8 +174,10 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 | `API_URL` | ✅ | URL del backend en Render (`https://tu-api.onrender.com`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Crear usuarios, `generateLink`, lookups de registro |
 | `INTERNAL_REGISTER_KEY` | ✅ | **Debe coincidir con Render** |
-| `RESEND_API_KEY` | ✅ (correos reales) | Envío por Resend; sin ella solo se loguea |
-| `RESEND_FROM_EMAIL` | ⬜ | Remitente (usa dominio verificado en prod) |
+| `BREVO_API_KEY` | ✅ (correos reales) | Envío por Brevo; sin ella solo se loguea |
+| `BREVO_FROM_EMAIL` | ⬜ | Remitente verificado en Brevo (Senders) |
+
+**Despliegue Vercel (correos):** además de `BREVO_API_KEY` y `BREVO_FROM_EMAIL`, configura `EMAIL_APP_URL=https://tu-app.vercel.app` y `NEXT_PUBLIC_APP_URL` con la misma URL. En Supabase → Authentication → URL Configuration, agrega `https://tu-app.vercel.app/auth/confirm` y `https://tu-app.vercel.app/**` en Redirect URLs. En Brevo, autoriza las IPs de Vercel o desactiva la restricción de IP para producción.
 | `WEEKLY_REPORT_EMAIL` | ⬜ | Destinatario del reporte semanal |
 | `CRON_SECRET` | ✅ (si usas cron) | Protege `/api/cron/weekly-report` |
 | `INTERNAL_CRON_TOKEN` | ⬜ | Bearer que el cron reenvía al backend |
@@ -202,9 +205,9 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 - `CRON_SECRET` igual en ambos si activas el reporte semanal.
 - Migraciones/seeds: `PASSWORD` (o `DATABASE_URL`) + `SEED_DEMO_PASSWORD`.
 
-## 9. Confirmación de correo (Resend)
+## 9. Confirmación de correo (Brevo)
 
-El registro usa BFF + Resend. Configurar en Supabase → Authentication → URL Configuration:
+El registro usa BFF + Brevo con página `/auth/confirm` (clic explícito, resiste escáneres de correo). Configurar en Supabase → Authentication → URL Configuration:
 
 - Site URL: tu dominio
 - Redirect URLs: `https://tu-dominio/auth/callback`

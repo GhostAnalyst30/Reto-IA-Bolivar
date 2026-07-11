@@ -38,6 +38,7 @@ CREATE TABLE users (
   CONSTRAINT users_email_domain CHECK (
     role = 'platform_admin'
     OR email ILIKE '%@utb.edu.co'
+    OR lower(email) = 'ascendraemmanuel@gmail.com'
   )
 );
 
@@ -228,6 +229,7 @@ CREATE TABLE student_profiles (
   student_id TEXT,
   program TEXT,
   semester INT,
+  birth_date DATE,
   contact_preference TEXT DEFAULT 'email',
   twin_consent BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -238,6 +240,7 @@ CREATE TABLE psychometric_assessments (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   institution_id UUID NOT NULL REFERENCES institutions(id),
   responses JSONB NOT NULL DEFAULT '[]',
+  questions JSONB DEFAULT '[]',
   status TEXT CHECK (status IN ('in_progress', 'completed')) DEFAULT 'in_progress',
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -322,8 +325,8 @@ CREATE TABLE interventions (
 -- ─── Auth trigger ───────────────────────────────────────────────────────────
 
 -- Correo del platform admin (debe coincidir con scripts/seed-platform-admin.ts).
--- El trigger le asigna role='platform_admin'/status='approved' para no violar
--- users_email_domain (su correo no es @utb.edu.co).
+-- El trigger le asigna role='platform_admin'/status='approved'. También existe
+-- excepción en users_email_domain para ascendraemmanuel@gmail.com (pruebas fuera de UTB).
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE

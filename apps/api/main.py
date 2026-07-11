@@ -1,10 +1,27 @@
 """FastAPI application entry point."""
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
+from core.tasks import prune_old_jobs
 from routes import register, admin_requests, student, institutional, platform_admin, profile, sessions, psychometric, opportunities
 
-app = FastAPI(title="UTB Te acompaña API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def _janitor():
+        while True:
+            prune_old_jobs()
+            await asyncio.sleep(600)
+
+    task = asyncio.create_task(_janitor())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="UTB Te acompaña API", version="1.0.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 app.add_middleware(

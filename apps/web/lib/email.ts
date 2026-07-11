@@ -1,16 +1,72 @@
-import { Resend } from 'resend';
-import { getAppUrl, getWeeklyReportEmail, shouldSkipOutgoingEmail } from '@/lib/app-config';
+import {
+  getAppUrl,
+  getEmailAppUrl,
+  getWeeklyReportEmail,
+  shouldSkipOutgoingEmail,
+} from '@/lib/app-config';
 
-export { getAppUrl, shouldSkipOutgoingEmail, getWeeklyReportEmail };
+export { getAppUrl, getEmailAppUrl, shouldSkipOutgoingEmail, getWeeklyReportEmail };
 export { shouldSkipOutgoingEmail as isDemoEmail };
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
-function getFromAddress() {
-  return process.env.RESEND_FROM_EMAIL || 'UTB Te acompaña <onboarding@resend.dev>';
+function getFromSender(): { name: string; email: string } {
+  const raw = process.env.BREVO_FROM_EMAIL || 'UTB Te acompaña <noreply@utb.edu.co>';
+  const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (match) {
+    return { name: match[1].trim() || 'UTB Te acompaña', email: match[2].trim() };
+  }
+  return { name: 'UTB Te acompaña', email: raw.trim() };
 }
 
 type DeliverResult = { id: string; link?: string; skipped?: boolean };
+
+function isTransientBrevoError(status: number, message: string): boolean {
+  if (status === 429 || status >= 500) return true;
+  const lower = message.toLowerCase();
+  return lower.includes('ip address') || lower.includes('unrecognised') || lower.includes('rate limit');
+}
+
+async function sendViaBrevo(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<{ messageId?: string }> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY no configurada');
+  }
+
+  const sender = getFromSender();
+  const res = await fetch(BREVO_API_URL, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': apiKey,
+    },
+    body: JSON.stringify({
+      sender,
+      to: [{ email: params.to }],
+      subject: params.subject,
+      htmlContent: params.html,
+    }),
+  });
+
+  const body = (await res.json().catch(() => ({}))) as {
+    messageId?: string;
+    message?: string;
+  };
+
+  if (!res.ok) {
+    const message = body.message || `Brevo HTTP ${res.status}`;
+    const err = new Error(message) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  return body;
+}
 
 async function deliverEmail(params: {
   to: string;
@@ -24,33 +80,40 @@ async function deliverEmail(params: {
     return { id: 'skipped-demo', link: params.link, skipped: true };
   }
 
-  if (!resend) {
-    console.warn('[email] RESEND_API_KEY no configurada.', params.devLog || params.subject);
+  if (!process.env.BREVO_API_KEY) {
+    console.warn('[email] BREVO_API_KEY no configurada.', params.devLog || params.subject);
     if (params.link) console.warn('[email] Enlace:', params.link);
     return { id: 'dev-log', link: params.link };
   }
 
-  const from = getFromAddress();
-  const { data, error } = await resend.emails.send({
-    from,
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-  });
+  const payload = { to: params.to, subject: params.subject, html: params.html };
 
-  if (error) {
-    console.error('[email] Fallo de envío Resend:', params.to, error.message);
-    // El remitente de pruebas onboarding@resend.dev solo entrega al dueño de la cuenta.
-    if (from.includes('resend.dev')) {
-      console.error(
-        '[email] Usa un dominio verificado en RESEND_FROM_EMAIL para enviar a cualquier destinatario.'
-      );
+  try {
+    const body = await sendViaBrevo(payload);
+    console.info('[email] Enviado a', params.to, '· id', body.messageId);
+    return { id: body.messageId || 'sent', link: params.link };
+  } catch (firstErr) {
+    const firstMessage = firstErr instanceof Error ? firstErr.message : String(firstErr);
+    const firstStatus = (firstErr as Error & { status?: number }).status || 0;
+
+    if (!isTransientBrevoError(firstStatus, firstMessage)) {
+      console.error('[email] Fallo de envío Brevo:', params.to, firstMessage);
+      throw firstErr instanceof Error ? firstErr : new Error(firstMessage);
     }
-    throw new Error(error.message);
-  }
 
-  console.info('[email] Enviado a', params.to, '· id', data?.id);
-  return { id: data?.id || 'sent', link: params.link };
+    console.warn('[email] Reintentando envío Brevo:', params.to);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    try {
+      const body = await sendViaBrevo(payload);
+      console.info('[email] Enviado a', params.to, '· id', body.messageId, '(reintento)');
+      return { id: body.messageId || 'sent', link: params.link };
+    } catch (retryErr) {
+      const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      console.error('[email] Fallo de envío Brevo:', params.to, retryMessage);
+      throw retryErr instanceof Error ? retryErr : new Error(retryMessage);
+    }
+  }
 }
 
 export async function sendConfirmationEmail(params: {

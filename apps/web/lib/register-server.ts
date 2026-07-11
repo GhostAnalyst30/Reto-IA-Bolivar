@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAppUrl, sendConfirmationEmail, sendPasswordResetEmail, shouldSkipOutgoingEmail } from '@/lib/email';
+import { getEmailAppUrl, sendConfirmationEmail, sendPasswordResetEmail, shouldSkipOutgoingEmail } from '@/lib/email';
 import { API_URL } from '@/lib/api';
 
 async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
@@ -44,6 +44,23 @@ async function ensurePublicUserProfile(
   email: string,
   fullName: string
 ) {
+  const { data: existing } = await admin
+    .from('users')
+    .select('status, role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (existing?.status === 'approved') {
+    const { error } = await admin.from('users').update({
+      email,
+      full_name: fullName,
+    }).eq('id', userId);
+    if (error) {
+      throw new Error(error.message || 'No se pudo actualizar el perfil de usuario');
+    }
+    return;
+  }
+
   const { error } = await admin.from('users').upsert(
     {
       id: userId,
@@ -81,28 +98,42 @@ export async function callBackendRegister(
   return data;
 }
 
+function buildConfirmPageLink(params: {
+  tokenHash: string;
+  type: 'magiclink' | 'recovery';
+  next: string;
+}) {
+  const url = new URL('/auth/confirm', getEmailAppUrl());
+  url.searchParams.set('token_hash', params.tokenHash);
+  url.searchParams.set('type', params.type);
+  url.searchParams.set('next', params.next);
+  return url.toString();
+}
+
 export async function sendConfirmLink(email: string, fullName: string) {
   if (shouldSkipOutgoingEmail(email)) {
     return { skipped: true };
   }
 
   const admin = createAdminClient();
-  const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent('/pending-approval')}`;
-
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: { redirectTo },
   });
 
-  if (error || !data.properties?.action_link) {
+  const tokenHash = data.properties?.hashed_token;
+  if (error || !tokenHash) {
     throw new Error(error?.message || 'No se pudo generar el enlace de confirmación');
   }
 
   await sendConfirmationEmail({
     to: email,
     fullName,
-    confirmLink: data.properties.action_link,
+    confirmLink: buildConfirmPageLink({
+      tokenHash,
+      type: 'magiclink',
+      next: '/pending-approval',
+    }),
   });
 }
 
@@ -112,21 +143,23 @@ export async function sendPasswordResetLink(email: string, fullName: string) {
   }
 
   const admin = createAdminClient();
-  const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
-
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email,
-    options: { redirectTo },
   });
 
-  if (error || !data.properties?.action_link) {
+  const tokenHash = data.properties?.hashed_token;
+  if (error || !tokenHash) {
     throw new Error(error?.message || 'No se pudo generar el enlace de recuperación');
   }
 
   await sendPasswordResetEmail({
     to: email,
     fullName,
-    resetLink: data.properties.action_link,
+    resetLink: buildConfirmPageLink({
+      tokenHash,
+      type: 'recovery',
+      next: '/reset-password',
+    }),
   });
 }

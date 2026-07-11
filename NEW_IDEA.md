@@ -45,4 +45,4 @@ Ver [docs/DESIGN-UTB.md](docs/DESIGN-UTB.md): paleta UTB (#003A70, #F28C28, etc.
 
 ## Stack
 
-Next.js 14 · FastAPI · Supabase · OpenRouter · Resend
+Next.js 14 · FastAPI · Supabase · OpenRouter · Brevo

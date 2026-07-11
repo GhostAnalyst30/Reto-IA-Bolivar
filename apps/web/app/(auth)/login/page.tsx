@@ -1,9 +1,10 @@
 import { Suspense } from 'react';
 import LoginClient from '@/app/(auth)/login/LoginClient';
+import { AuthLoadingFallback } from '@/components/immersive/layout/AuthLoadingFallback';
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-zinc-500">Cargando...</div>}>
+    <Suspense fallback={<AuthLoadingFallback />}>
       <LoginClient />
     </Suspense>
   );

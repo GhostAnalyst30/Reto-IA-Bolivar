@@ -1,8 +1,17 @@
 """Student risk scoring and persistence."""
 from datetime import datetime, timedelta, timezone
 
+from core.cache import risk_cache
 from core.parallel import run_parallel
 from core.supabase_client import get_supabase
+
+def _invalidate_institution_caches(institution_id: str) -> None:
+    risk_cache.invalidate(institution_id)
+    try:
+        from services.analytics_service import invalidate_dashboard
+        invalidate_dashboard(institution_id)
+    except Exception:
+        pass
 
 
 def _score_risk_from_data(
@@ -82,7 +91,7 @@ def _load_bulk_risk_data(sb, student_ids: list[str], week_ago: str) -> tuple:
     def fetch_moods():
         return sb.table("mood_checkins").select("user_id, mood_score, created_at").in_(
             "user_id", student_ids
-        ).order("created_at", desc=True).execute()
+        ).order("created_at", desc=True).limit(len(student_ids) * 3).execute()
 
     chats_res, psych_res, progress_res, moods_res = run_parallel(
         fetch_chats, fetch_psych, fetch_progress, fetch_moods
@@ -147,11 +156,27 @@ def persist_risk_reports(institution_id: str) -> int:
         )
         rows.append({**report, "computed_at": now})
 
-    sb.table("student_risk_reports").insert(rows).execute()
+    batch_size = 500
+    for i in range(0, len(rows), batch_size):
+        sb.table("student_risk_reports").insert(rows[i:i + batch_size]).execute()
+
+    _invalidate_institution_caches(institution_id)
     return len(rows)
 
 
-def get_latest_risk_by_institution(institution_id: str) -> list[dict]:
+def _get_latest_risk_via_rpc(institution_id: str) -> list[dict] | None:
+    sb = get_supabase()
+    try:
+        result = sb.rpc("latest_risk_by_institution", {"p_institution_id": institution_id}).execute()
+        rows = result.data or []
+        if rows:
+            return sorted(rows, key=lambda x: x.get("risk_score") or 0, reverse=True)
+        return rows
+    except Exception:
+        return None
+
+
+def _get_latest_risk_legacy(institution_id: str) -> list[dict]:
     sb = get_supabase()
     students = sb.table("users").select("id, full_name, email").eq(
         "institution_id", institution_id
@@ -211,3 +236,40 @@ def get_latest_risk_by_institution(institution_id: str) -> list[dict]:
 
     results.sort(key=lambda x: x.get("risk_score", 0), reverse=True)
     return results
+
+
+def invalidate_risk_cache(institution_id: str) -> None:
+    risk_cache.invalidate(institution_id)
+
+
+def get_latest_risk_by_institution(
+    institution_id: str,
+    *,
+    risk_level: str | None = None,
+    program: str | None = None,
+    search: str | None = None,
+    min_score: float | None = None,
+) -> list[dict]:
+    cached = risk_cache.get(institution_id)
+    if cached is None:
+        rows = _get_latest_risk_via_rpc(institution_id)
+        if rows is None:
+            rows = _get_latest_risk_legacy(institution_id)
+        risk_cache.set(institution_id, rows)
+        cached = rows
+
+    rows = list(cached)
+    if risk_level:
+        rows = [r for r in rows if r.get("risk_level") == risk_level]
+    if program:
+        needle = program.strip().lower()
+        rows = [r for r in rows if needle in (r.get("program") or "").lower()]
+    if search:
+        needle = search.strip().lower()
+        rows = [
+            r for r in rows
+            if needle in (r.get("full_name") or "").lower()
+        ]
+    if min_score is not None:
+        rows = [r for r in rows if (r.get("risk_score") or 0) >= min_score]
+    return rows

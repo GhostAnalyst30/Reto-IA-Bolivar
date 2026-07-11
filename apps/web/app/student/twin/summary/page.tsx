@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, Spinner } from '@/components/ui';
+import { Button, Spinner } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
-import { BentoGrid, BentoCell } from '@/components/ui/BentoGrid';
+import { PortalCard } from '@/components/portal/PortalCard';
+import { StaggerList, StaggerItem } from '@/components/portal/StaggerList';
 import { Brain, Sparkles, BookOpen, Heart } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
 
@@ -57,12 +58,13 @@ export default function TwinSummaryPage() {
 
       <PrivacyBanner message="Este perfil es confidencial. El personal UTB solo puede verlo si activas el consentimiento en tu perfil." />
 
-      <Card className="border-brand-amber/30 bg-brand-amber/5">
+      <PortalCard className="border-brand-amber/30 bg-brand-amber/5">
         <p className="text-lg leading-relaxed">{twin.summary_text}</p>
-      </Card>
+      </PortalCard>
 
-      <BentoGrid cols={3}>
-        <BentoCell>
+      <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerItem>
+          <PortalCard>
           <div className="flex items-center gap-2 text-brand-amber mb-3">
             <Sparkles className="h-5 w-5" /> Intereses
           </div>
@@ -71,41 +73,49 @@ export default function TwinSummaryPage() {
               <li key={i} className="rounded bg-brand-bg px-2 py-1">{i}</li>
             ))}
           </ul>
-        </BentoCell>
-        <BentoCell>
+          </PortalCard>
+        </StaggerItem>
+        <StaggerItem>
+          <PortalCard>
           <div className="flex items-center gap-2 text-brand-amber mb-3">
             <BookOpen className="h-5 w-5" /> Estilo de aprendizaje
           </div>
           <p className="text-2xl font-semibold capitalize">{twin.learning_style || 'Mixto'}</p>
-        </BentoCell>
-        <BentoCell>
+          </PortalCard>
+        </StaggerItem>
+        <StaggerItem>
+          <PortalCard>
           <div className="flex items-center gap-2 text-brand-amber mb-3">
             <Heart className="h-5 w-5" /> Perfil emocional
           </div>
           <p className="text-sm text-zinc-400">{twin.emotional_baseline}</p>
-        </BentoCell>
-      </BentoGrid>
+          </PortalCard>
+        </StaggerItem>
+      </StaggerList>
 
       {twin.traits && Object.keys(twin.traits).length > 0 && (
         <section>
           <h2 className="mb-4 font-semibold">Indicadores</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <StaggerList className="grid gap-4 md:grid-cols-3">
             {Object.entries(twin.traits).map(([key, val]) => (
-              <Card key={key}>
+              <StaggerItem key={key}>
+              <PortalCard>
                 <p className="text-sm capitalize text-zinc-500">{key}</p>
                 <div className="mt-2 h-2 rounded-full bg-brand-border">
                   <div className="h-2 rounded-full bg-brand-amber" style={{ width: `${val}%` }} />
                 </div>
                 <p className="mt-1 text-right text-sm font-medium">{val}%</p>
-              </Card>
+              </PortalCard>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerList>
         </section>
       )}
 
       <div className="flex flex-wrap gap-3">
         <Link href="/student/twin/chat"><Button>Hablar con mi Digital Twin</Button></Link>
         <Link href="/student/opportunities"><Button variant="secondary">Ver oportunidades recomendadas</Button></Link>
+        <Link href="/student/onboarding/survey"><Button variant="secondary">Repetir encuesta</Button></Link>
       </div>
     </div>
   );

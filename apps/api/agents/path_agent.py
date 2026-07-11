@@ -44,7 +44,7 @@ def _parse_llm_steps(raw: str, relevant: list[dict], topic: str) -> list[dict]:
 
 async def generate_learning_path(topic: str, user_id: str, institution_id: str | None = None) -> dict:
     sb = get_supabase()
-    query = sb.table("resources").select("id, title, topic, description")
+    query = sb.table("resources").select("id, title, topic, description, source, category")
     if institution_id:
         query = query.eq("institution_id", institution_id)
     resources = query.limit(30).execute()
@@ -56,6 +56,10 @@ async def generate_learning_path(topic: str, user_id: str, institution_id: str |
         or topic.lower() in r["title"].lower()
         or topic.lower() in (r.get("description") or "").lower()
     ]
+    # Priorizar recursos UTB / biblioteca
+    utb_relevant = [r for r in relevant if r.get("source") == "utb_biblioteca" or r.get("category") == "biblioteca"]
+    other_relevant = [r for r in relevant if r not in utb_relevant]
+    relevant = utb_relevant + other_relevant
     if len(relevant) < 4:
         relevant = resource_list[:8]
 
@@ -67,7 +71,10 @@ async def generate_learning_path(topic: str, user_id: str, institution_id: str |
         {
             "role": "system",
             "content": (
-                "Genera una ruta de aprendizaje con 4 a 6 pasos en español. "
+                "Genera una ruta de aprendizaje pedagógica con 4 a 6 pasos en español. "
+                "Secuencia: 1) Introducción al tema, 2) Conceptos clave, 3) Práctica guiada, "
+                "4) Evaluación o aplicación, 5) Cierre/reflexión (opcional). "
+                "Prioriza recursos del catálogo UTB/biblioteca cuando existan. "
                 "Responde SOLO un JSON array: "
                 '[{"title": "nombre del paso", "resource_id": "uuid-del-recurso-o-null"}]'
             ),

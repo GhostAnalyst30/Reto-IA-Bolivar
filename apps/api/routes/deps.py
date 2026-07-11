@@ -4,6 +4,7 @@ from core.security import get_current_user
 
 PLATFORM_ADMIN = "platform_admin"
 INSTITUTIONAL_ROLES = frozenset({"area_head", "dean", "vice_president", "rector", "admin", PLATFORM_ADMIN})
+UTB_INSTITUTION_ID = "a0000000-0000-4000-8000-000000000001"
 
 
 def is_platform_admin(user: dict) -> bool:
@@ -15,9 +16,9 @@ def is_institution_admin(user: dict) -> bool:
 
 
 def effective_institution_id(user: dict, institution_id: str | None = None) -> str | None:
-    """Resuelve institución activa: query param para platform_admin, perfil para el resto."""
-    if is_platform_admin(user) and institution_id:
-        return institution_id
+    """Resuelve institución activa: UTB por defecto para platform_admin, perfil para el resto."""
+    if is_platform_admin(user):
+        return institution_id or UTB_INSTITUTION_ID
     return user.get("institution_id")
 
 

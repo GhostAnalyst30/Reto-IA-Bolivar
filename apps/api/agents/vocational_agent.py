@@ -9,7 +9,7 @@ from core.supabase_client import get_supabase
 
 async def get_programs(institution_id: str) -> list[dict]:
     sb = get_supabase()
-    result = sb.table("academic_programs").select("id, name, description").eq(
+    result = sb.table("academic_programs").select("id, name, description, program_curricula(id, title, file_url)").eq(
         "institution_id", institution_id
     ).eq("is_active", True).execute()
     return result.data or []

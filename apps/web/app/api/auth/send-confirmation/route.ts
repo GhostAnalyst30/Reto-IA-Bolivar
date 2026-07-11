@@ -25,7 +25,15 @@ export async function POST(request: Request) {
     await sendConfirmLink(email, full_name || email.split('@')[0]);
 
     return Response.json({ sent: true });
-  } catch {
-    return Response.json({ error: 'Error al enviar correo' }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error al enviar correo';
+    console.error('[send-confirmation]', message);
+    return Response.json(
+      {
+        error: 'Error al enviar correo',
+        detail: process.env.NODE_ENV === 'development' ? message : undefined,
+      },
+      { status: 500 }
+    );
   }
 }

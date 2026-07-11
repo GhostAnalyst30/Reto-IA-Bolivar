@@ -1,4 +1,4 @@
-"""Notify users via Next.js internal email API (Resend)."""
+"""Notify users via Next.js internal email API (Brevo)."""
 import logging
 
 import httpx
