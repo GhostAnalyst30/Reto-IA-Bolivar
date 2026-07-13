@@ -62,6 +62,9 @@ export const PLATFORM_FULL_NAV: NavEntry[] = [
     ],
   },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/analytics', label: 'Analítica' },
+  { href: '/institutional/prediction', label: 'Predicción' },
+  { href: '/institutional/actions', label: 'Acciones' },
   { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
   {
     label: 'Oportunidades y apoyo',
@@ -72,13 +75,18 @@ export const PLATFORM_FULL_NAV: NavEntry[] = [
   },
   { href: '/institutional/admin/programs', label: 'Programas académicos' },
   { href: '/institutional/admin/auth-keys', label: 'Claves de rol' },
+  { href: '/institutional/admin/support-requests', label: 'Apoyo humano' },
+  { href: '/institutional/admin/academic-outcomes', label: 'Estados académicos' },
   { href: '/institutional/admin/security', label: 'Seguridad' },
 ];
 
 /** Nav directivos (consulta) */
 export const DIRECTIVO_NAV: NavEntry[] = [
   { href: '/institutional/dashboard', label: 'Dashboard' },
+  { href: '/institutional/analytics', label: 'Analítica' },
+  { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/actions', label: 'Acciones' },
   { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
   { href: '/institutional/chat', label: 'Chat institucional' },
 ];
@@ -86,7 +94,10 @@ export const DIRECTIVO_NAV: NavEntry[] = [
 /** Nav admin institucional (gestión) */
 export const ADMIN_INSTITUTIONAL_NAV: NavEntry[] = [
   { href: '/institutional/dashboard', label: 'Dashboard' },
+  { href: '/institutional/analytics', label: 'Analítica' },
+  { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/actions', label: 'Acciones' },
   { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
   { href: '/institutional/chat', label: 'Chat institucional' },
   {
@@ -108,6 +119,8 @@ export const ADMIN_INSTITUTIONAL_NAV: NavEntry[] = [
   },
   { href: '/institutional/admin/programs', label: 'Programas académicos', adminOnly: true },
   { href: '/institutional/admin/requests', label: 'Solicitudes', adminOnly: true },
+  { href: '/institutional/admin/support-requests', label: 'Apoyo humano', adminOnly: true },
+  { href: '/institutional/admin/academic-outcomes', label: 'Estados académicos', adminOnly: true },
   { href: '/institutional/admin/auth-keys', label: 'Claves de rol', adminOnly: true },
   { href: '/institutional/admin/security', label: 'Seguridad', adminOnly: true },
 ];

@@ -13,7 +13,15 @@ from agents.director_agent import get_director_insights
 from agents.institutional_chat_agent import institutional_chat_reply, parse_chart_from_response
 from core.tasks import get_job, run_in_background
 from services.analytics_service import compute_dashboard, invalidate_dashboard
-from services.risk_service import get_latest_risk_by_institution, persist_risk_reports, compute_student_risk
+from services.risk_service import (
+    get_latest_risk_by_institution,
+    persist_risk_reports,
+    compute_student_risk,
+    persist_single_risk_report,
+    get_risk_history,
+    prune_risk_history,
+)
+from services.recommendation_service import recommend_opportunities
 
 router = APIRouter(prefix="/institutional", tags=["institutional"])
 logger = logging.getLogger(__name__)
@@ -25,6 +33,24 @@ class InterventionCreate(BaseModel):
     student_id: str
     type: str = "academica"
     notes: str
+
+
+class InterventionPatch(BaseModel):
+    status: str | None = None
+    notes: str | None = None
+
+
+class SupportRequestPatch(BaseModel):
+    status: str
+    assigned_to: str | None = None
+
+
+class AcademicOutcomeUpsert(BaseModel):
+    user_id: str
+    enrollment_status: str
+    withdrawal_reason: str | None = None
+    effective_date: str | None = None
+    notes: str | None = None
 
 
 class InstitutionUserCreate(BaseModel):
@@ -261,6 +287,7 @@ async def get_risk_students(
     program: str | None = Query(None),
     search: str | None = Query(None),
     min_score: float | None = Query(None),
+    dominant_cause: str | None = Query(None),
 ):
     inst = effective_institution_id(user, institution_id)
     if not inst:
@@ -271,6 +298,7 @@ async def get_risk_students(
         program=program,
         search=search,
         min_score=min_score,
+        dominant_cause=dominant_cause,
     )
 
 
@@ -346,12 +374,30 @@ async def get_student_detail(
             "user_id", student_id
         ).order("updated_at", desc=True).limit(10).execute()
 
-    profile, risk, interventions, chats = run_parallel(
-        fetch_profile, fetch_risk, fetch_interventions, fetch_chats
+    def fetch_support():
+        return sb.table("support_requests").select("*").eq(
+            "user_id", student_id
+        ).order("created_at", desc=True).execute()
+
+    profile, risk, interventions, chats, support = run_parallel(
+        fetch_profile, fetch_risk, fetch_interventions, fetch_chats, fetch_support
     )
 
     risk_institution = inst or student.data.get("institution_id") or ""
     risk_computed = risk.data[0] if risk.data else compute_student_risk(student_id, risk_institution)
+    risk_history = get_risk_history(student_id, limit=8)
+
+    economic_factors = {"situacion_economica", "economico"}
+    dominant = risk_computed.get("dominant_cause")
+    factor_keys = {f.get("key") for f in (risk_computed.get("factors") or [])}
+    recommended_opportunities = []
+    if dominant == "economico" or economic_factors & factor_keys:
+        try:
+            recommended_opportunities = recommend_opportunities(
+                student_id, risk_institution, limit=5
+            )
+        except Exception:
+            recommended_opportunities = []
 
     prof = profile.data[0] if profile.data else {}
     twin = None
@@ -365,9 +411,12 @@ async def get_student_detail(
         "student": student.data,
         "profile": prof,
         "risk": risk_computed,
+        "risk_history": risk_history,
         "interventions": interventions.data or [],
+        "support_requests": support.data or [],
         "activity": chats.data or [],
         "digital_twin": twin,
+        "recommended_opportunities": recommended_opportunities,
     }
 
 
@@ -396,6 +445,188 @@ async def create_intervention(
         "notes": body.notes,
     }).execute()
     return result.data[0]
+
+
+@router.patch("/interventions/{intervention_id}")
+async def patch_intervention(
+    intervention_id: str,
+    body: InterventionPatch,
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(user, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+    existing = sb.table("interventions").select("*").eq("id", intervention_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Intervención no encontrada")
+    if existing.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403)
+    updates: dict = {}
+    if body.status is not None:
+        if body.status not in ("open", "closed"):
+            raise HTTPException(status_code=400, detail="Estado inválido")
+        updates["status"] = body.status
+    if body.notes is not None:
+        updates["notes"] = body.notes
+    if not updates:
+        return existing.data
+    result = sb.table("interventions").update(updates).eq("id", intervention_id).execute()
+    return result.data[0] if result.data else existing.data
+
+
+@router.get("/support-requests")
+async def list_support_requests(
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(user, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+
+    students = sb.table("users").select("id, full_name, email").eq(
+        "institution_id", inst
+    ).eq("role", "student").execute()
+    student_map = {s["id"]: s for s in (students.data or [])}
+    if not student_map:
+        return []
+
+    query = sb.table("support_requests").select("*").in_("user_id", list(student_map.keys()))
+    if status:
+        query = query.eq("status", status)
+    result = query.order("created_at", desc=True).limit(100).execute()
+
+    rows = []
+    for r in result.data or []:
+        st = student_map.get(r["user_id"], {})
+        row = {**r, "student_name": st.get("full_name") or st.get("email"), "student_email": st.get("email")}
+        if search:
+            needle = search.strip().lower()
+            if needle not in (row.get("student_name") or "").lower() and needle not in (row.get("reason") or "").lower():
+                continue
+        rows.append(row)
+    return rows
+
+
+@router.patch("/support-requests/{request_id}")
+async def patch_support_request(
+    request_id: str,
+    body: SupportRequestPatch,
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(user, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+    if body.status not in ("pending", "assigned", "resolved"):
+        raise HTTPException(status_code=400, detail="Estado inválido")
+
+    existing = sb.table("support_requests").select("*").eq("id", request_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    student = sb.table("users").select("institution_id").eq(
+        "id", existing.data["user_id"]
+    ).single().execute()
+    if not student.data or student.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403)
+
+    updates: dict = {"status": body.status}
+    if body.status == "assigned" and body.assigned_to:
+        updates["assigned_to"] = body.assigned_to
+    elif body.status == "assigned":
+        updates["assigned_to"] = user["id"]
+
+    result = sb.table("support_requests").update(updates).eq("id", request_id).execute()
+
+    if body.status in ("assigned", "resolved"):
+        student_id = existing.data.get("user_id")
+        if student_id:
+            try:
+                persist_single_risk_report(student_id, inst)
+            except Exception:
+                pass
+
+    return result.data[0] if result.data else existing.data
+
+
+@router.get("/students/{student_id}/risk-history")
+async def student_risk_history(
+    student_id: str,
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+):
+    inst = effective_institution_id(user, institution_id)
+    sb = get_supabase()
+    student = sb.table("users").select("institution_id").eq("id", student_id).eq("role", "student").single().execute()
+    if not student.data:
+        raise HTTPException(status_code=404)
+    if inst and student.data.get("institution_id") != inst:
+        raise HTTPException(status_code=403)
+    return get_risk_history(student_id, limit=limit)
+
+
+@router.get("/academic-outcomes")
+async def list_academic_outcomes(
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+    status: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(user, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+    query = sb.table("student_academic_outcomes").select("*").eq("institution_id", inst)
+    if status:
+        query = query.eq("enrollment_status", status)
+    result = query.order("updated_at", desc=True).execute()
+    rows = result.data or []
+    if not rows:
+        return []
+    user_ids = [r["user_id"] for r in rows]
+    users_res = sb.table("users").select("id, full_name, email").in_("id", user_ids).execute()
+    user_map = {u["id"]: u for u in (users_res.data or [])}
+    for r in rows:
+        r["users"] = user_map.get(r["user_id"])
+    return rows
+
+
+@router.post("/academic-outcomes", status_code=201)
+async def upsert_academic_outcome(
+    body: AcademicOutcomeUpsert,
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+):
+    sb = get_supabase()
+    inst = effective_institution_id(user, institution_id)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Institución requerida")
+    if body.enrollment_status not in ("activo", "aplazado", "retirado", "graduado"):
+        raise HTTPException(status_code=400, detail="Estado inválido")
+
+    student = sb.table("users").select("id, institution_id").eq(
+        "id", body.user_id
+    ).eq("role", "student").single().execute()
+    if not student.data or student.data.get("institution_id") != inst:
+        raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+
+    row = {
+        "user_id": body.user_id,
+        "institution_id": inst,
+        "enrollment_status": body.enrollment_status,
+        "withdrawal_reason": body.withdrawal_reason,
+        "effective_date": body.effective_date,
+        "notes": body.notes,
+        "recorded_by": user["id"],
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+    result = sb.table("student_academic_outcomes").upsert(row, on_conflict="user_id").execute()
+    return result.data[0] if result.data else row
 
 
 @router.post("/director/chat")

@@ -113,6 +113,13 @@ async def submit_assessment(body: SubmitPsychometric, user: dict = Depends(requi
     }, on_conflict="user_id").execute()
 
     questions_cache.invalidate(user["id"])
+
+    try:
+        from services.risk_service import persist_single_risk_report
+        persist_single_risk_report(user["id"], inst)
+    except Exception:
+        pass
+
     return {"status": "completed", "twin": twin_data}
 
 

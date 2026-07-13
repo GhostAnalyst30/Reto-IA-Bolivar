@@ -27,7 +27,8 @@ def _compute_dashboard_impl(inst: str) -> dict:
     saved_count = int(stats.get("saved_count") or 0)
     avg_progress = float(stats.get("avg_progress") or 0.0)
     avg_risk_score = float(stats.get("avg_risk_score") or 0.0)
-    at_risk = int(stats.get("at_risk_count") or max(0, enrollment - active_7d))
+    at_risk = int(stats.get("at_risk_count") or 0)
+    inactive_7d = max(0, enrollment - active_7d)
 
     retention = min(99.9, round(70 + (avg_progress * 0.25) + (active_7d / max(enrollment, 1) * 15), 1))
 
@@ -41,7 +42,8 @@ def _compute_dashboard_impl(inst: str) -> dict:
         {"metric_name": "psychometric_completed", "metric_value": vocational_count, "metric_unit": "encuestas", "period": "live"},
         {"metric_name": "resources_saved", "metric_value": saved_count, "metric_unit": "bookmarks", "period": "live"},
         {"metric_name": "avg_progress", "metric_value": round(avg_progress, 1), "metric_unit": "percent", "period": "live"},
-        {"metric_name": "at_risk_students", "metric_value": at_risk, "metric_unit": "students", "period": "14d"},
+        {"metric_name": "at_risk_students", "metric_value": at_risk, "metric_unit": "students", "period": "live"},
+        {"metric_name": "inactive_twin_7d", "metric_value": inactive_7d, "metric_unit": "students", "period": "7d"},
     ]
 
     charts = {
@@ -60,8 +62,14 @@ def _compute_dashboard_impl(inst: str) -> dict:
     actions = []
     if at_risk > 0:
         actions.append({
-            "title": f"Tutoría IA para {at_risk} estudiantes inactivos",
+            "title": f"Revisar {at_risk} estudiantes con riesgo alto o moderado",
             "priority": "high",
+            "status": "pending",
+        })
+    if inactive_7d > 0:
+        actions.append({
+            "title": f"Contactar {inactive_7d} estudiantes sin actividad en Digital Twin (7 días)",
+            "priority": "high" if inactive_7d >= 3 else "medium",
             "status": "pending",
         })
     if vocational_count < enrollment * 0.3 and enrollment > 0:
@@ -88,16 +96,21 @@ def _compute_dashboard_impl(inst: str) -> dict:
         "dropout_risk_percent": round(100 - retention, 1),
         "confidence": "medium" if enrollment >= 5 else "low",
         "factors": [
-            f"{active_7d}/{enrollment} estudiantes activos en 7 días",
+            f"{active_7d}/{enrollment} estudiantes activos en Digital Twin (7 días)",
             f"Progreso promedio {round(avg_progress, 1)}%",
+            f"{at_risk} estudiantes con riesgo alto o moderado",
         ],
     }
+
+    from services.risk_service import get_cohort_risk_alerts
+    cohort_alerts = get_cohort_risk_alerts(inst)
 
     return {
         "kpis": kpis,
         "charts": charts,
         "actions": actions,
         "prediction": prediction,
+        "cohort_alerts": cohort_alerts,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -117,6 +130,7 @@ def compute_dashboard(user: dict) -> dict:
             },
             "actions": [],
             "prediction": {},
+            "cohort_alerts": [],
         }
 
     cached = dashboard_cache.get(inst)

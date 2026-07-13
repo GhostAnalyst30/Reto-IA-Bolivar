@@ -1,7 +1,7 @@
 """Admin routes for requests and auth keys."""
 import secrets
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
@@ -440,3 +440,31 @@ async def weekly_report_data(
     from services.analytics_service import compute_dashboard
     inst = effective_institution_id(admin, institution_id)
     return compute_dashboard({**admin, "institution_id": inst})
+
+
+UTB_INSTITUTION_ID = "a0000000-0000-4000-8000-000000000001"
+
+
+@router.post("/cron/recompute-risk")
+async def cron_recompute_risk(
+    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
+):
+    from core.config import settings
+    from services.risk_service import persist_risk_reports
+    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    count = persist_risk_reports(UTB_INSTITUTION_ID)
+    return {"computed": count, "institution_id": UTB_INSTITUTION_ID}
+
+
+@router.post("/cron/prune-risk")
+async def cron_prune_risk(
+    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
+    keep_days: int = Query(90, ge=30, le=365),
+):
+    from core.config import settings
+    from services.risk_service import prune_risk_history
+    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    deleted = prune_risk_history(UTB_INSTITUTION_ID, keep_days=keep_days)
+    return {"pruned": deleted, "institution_id": UTB_INSTITUTION_ID}

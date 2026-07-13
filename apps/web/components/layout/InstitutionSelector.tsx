@@ -36,7 +36,7 @@ export function InstitutionSelector({ showAllOption = true }: InstitutionSelecto
     window.dispatchEvent(new CustomEvent('institution-context-changed'));
   }
 
-  if (institutions.length === 0) return null;
+  if (institutions.length <= 1) return null;
 
   return (
     <div className="min-w-[200px]">

@@ -20,8 +20,16 @@ Ejecutar **en orden**:
 | 4 | `supabase/003_seed_utb.sql` | Institución UTB, facultades, recursos base |
 | 5 | `SEED_DEMO_PASSWORD=Immanuel3008 pnpm --filter @reto/web exec tsx ../../scripts/seed-platform-admin.ts` | Crea el usuario Auth del platform admin |
 | 6 | `supabase/004_seed_platform_admin.sql` | Red de seguridad idempotente del perfil `platform_admin` |
+| 7 | `supabase/009_performance_indexes.sql` | RPCs de dashboard y riesgo |
+| 8 | `supabase/010_users_management.sql` | RPC usuarios con perfil |
+| 9 | `supabase/011_align_metrics.sql` | Alinear `active_7d` con Digital Twin |
+| 10 | `supabase/012_dropout_enhancements.sql` | Apoyo humano RLS, outcomes, `academic_records`, pruning |
 
-Los pasos 1–4 también se aplican con `python scripts/run_migrations.py --reset`.
+Los pasos 1–4 también se aplican con `python scripts/run_migrations.py --reset`. Los parches 009–012 con `python scripts/run_migrations.py` (sin `--reset`).
+
+### Alcance UTB-only
+
+La plataforma opera **exclusivamente para la UTB**. El seed `003_seed_utb.sql` crea la única institución (`slug: utb`). No hay UI para crear otras universidades; `platform_admin` es el administrador operativo de UTB.
 
 ### Demo UTB (opcional)
 
@@ -38,9 +46,22 @@ Ejecuta `seed-utb-users.ts` **antes** de `--demo`: los `UPDATE` de `005_seed_dem
 
 **Estudiante:** `/student/onboarding/survey` → `/student/twin/summary`, `/student/twin/chat`, `/student/opportunities`, `/student/resources`, `/student/paths`, `/student/progress`, `/student/profile`. La encuesta psicométrica es obligatoria antes de acceder al Digital Twin.
 
-**Institucional:** `/institutional/dashboard`, `/institutional/analytics`, `/institutional/prediction`, `/institutional/risk`, `/institutional/students/[id]`, `/institutional/director`, `/institutional/admin`.
+**Institucional:** `/institutional/dashboard`, `/institutional/analytics`, `/institutional/prediction`, `/institutional/actions`, `/institutional/risk`, `/institutional/students/[id]`, `/institutional/executive-summary`, `/institutional/chat`, `/institutional/admin` (solicitudes, apoyo humano, estados académicos, programas, claves).
 
-> La orientación vocacional está **fusionada** en la encuesta psicométrica (no es un módulo aparte).
+> Login por **correo institucional + contraseña** (no username).
+
+### Motor de riesgo de deserción (v1.1)
+
+Factores base: inactividad Digital Twin (7d), encuesta incompleta, progreso bajo, mood bajo.
+
+Factores extendidos: estrés, motivación, apoyo social, situación económica, solicitud de apoyo pendiente.
+
+- Recálculo manual: botón en `/institutional/risk`
+- Recálculo automático: tras mood check-in, encuesta, solicitud de apoyo o avance de progreso (+10%)
+- Cron semanal: `POST /api/cron/recompute-risk` (header `x-cron-secret`)
+- Pruning mensual: `POST /api/cron/prune-risk`
+- Demo: `CRON_SECRET=... npx tsx scripts/compute-risk-demo.ts`
+- ML baseline offline: `python scripts/train_dropout_model.py` (requiere outcomes en `student_academic_outcomes`)
 
 ## 3. Variables de entorno
 
@@ -181,7 +202,7 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 
 **Despliegue Vercel (correos):** además de `BREVO_API_KEY` y `BREVO_FROM_EMAIL`, configura `EMAIL_APP_URL=https://tu-app.vercel.app` y `NEXT_PUBLIC_APP_URL` con la misma URL. En Supabase → Authentication → URL Configuration, agrega `https://tu-app.vercel.app/auth/confirm` y `https://tu-app.vercel.app/**` en Redirect URLs. En Brevo, autoriza las IPs de Vercel o desactiva la restricción de IP para producción.
 | `WEEKLY_REPORT_EMAIL` | ⬜ | Destinatario del reporte semanal |
-| `CRON_SECRET` | ✅ (si usas cron) | Protege `/api/cron/weekly-report` |
+| `CRON_SECRET` | ✅ (si usas cron) | Protege `/api/cron/weekly-report`, `/api/cron/recompute-risk`, `/api/cron/prune-risk` |
 | `INTERNAL_CRON_TOKEN` | ⬜ | Bearer que el cron reenvía al backend |
 
 ### 8.2 Variables en Render (backend `apps/api`)
@@ -198,7 +219,7 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 | `OPENROUTER_BASE_URL`, `LLM_MODEL_TUTOR`, `LLM_MODEL_DIRECTOR`, `LLM_MODEL_PATH` | ⬜ | Config LLM (tienen default) |
 | `GEMINI_API_KEY`, `HUGGINGFACE_API_KEY`, `LITELLM_API_BASE`, `LITELLM_API_KEY` | ⬜ | Proveedores LLM de fallback |
 | `SCRAPER_ENABLED`, `YOUTUBE_API_KEY` | ⬜ | Scraper de recursos externos |
-| `CRON_SECRET` | ⬜ | Solo si el cron llama al backend |
+| `CRON_SECRET` | ⬜ | Debe coincidir con Vercel; protege cron de riesgo y reportes |
 
 ### 8.3 Dependencias cruzadas (evita fallos de conexión)
 

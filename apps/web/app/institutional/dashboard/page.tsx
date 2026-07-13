@@ -17,6 +17,7 @@ interface Dashboard {
     enrollment_trend?: { label: string; value: number }[];
     engagement?: { label: string; value: number }[];
   };
+  cohort_alerts?: { program: string; semester: number | null; count: number; alto: number; moderado: number }[];
 }
 
 const COLORS = ['#F28C28', '#003A70', '#4A90C2', '#71717a'];
@@ -65,7 +66,8 @@ export default function InstitutionalDashboardPage() {
 
   const enrollmentTrend = data.charts.enrollment_trend ?? [];
   const engagement = data.charts.engagement ?? [];
-  const avgRisk = data.kpis.find((k) => k.metric_name === 'at_risk_students');
+  const atRisk = data.kpis.find((k) => k.metric_name === 'at_risk_students');
+  const cohorts = data.cohort_alerts ?? [];
 
   return (
     <div className="space-y-6">
@@ -127,15 +129,46 @@ export default function InstitutionalDashboardPage() {
         </StaggerItem>
       </StaggerList>
 
-      {avgRisk && Number(avgRisk.metric_value) > 0 && (
+      {atRisk && Number(atRisk.metric_value) > 0 && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
           <p className="font-medium text-red-600 dark:text-red-400">
-            {avgRisk.metric_value} estudiantes en riesgo detectados
+            {atRisk.metric_value} estudiantes en riesgo detectados
           </p>
           <PortalButton className="mt-2" size="sm" onClick={() => router.push('/institutional/risk')}>
             Revisar casos
           </PortalButton>
         </div>
+      )}
+
+      {cohorts.length > 0 && (
+        <PortalCard>
+          <p className="font-medium mb-3">Cohortes en riesgo</p>
+          <div className="overflow-x-auto text-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-brand-border text-left">
+                  <th className="py-2 pr-4">Programa</th>
+                  <th className="py-2 pr-4">Semestre</th>
+                  <th className="py-2 pr-4">Total</th>
+                  <th className="py-2">Alto / Moderado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cohorts.slice(0, 5).map((c) => (
+                  <tr key={`${c.program}-${c.semester}`} className="border-b border-brand-border/50">
+                    <td className="py-2 pr-4">{c.program}</td>
+                    <td className="py-2 pr-4">{c.semester ?? '—'}</td>
+                    <td className="py-2 pr-4 font-medium">{c.count}</td>
+                    <td className="py-2 text-muted">{c.alto} / {c.moderado}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Link href="/institutional/analytics" className="text-xs text-[var(--portal-accent)] hover:underline mt-2 inline-block">
+            Ver analítica completa →
+          </Link>
+        </PortalCard>
       )}
     </div>
   );

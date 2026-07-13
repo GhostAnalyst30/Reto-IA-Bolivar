@@ -21,10 +21,12 @@ MIGRATIONS = [
     SUPABASE / "003_seed_utb.sql",
 ]
 PATCHES = {
+    "012": SUPABASE / "012_dropout_enhancements.sql",
+    "011": SUPABASE / "011_align_metrics.sql",
     "010": SUPABASE / "010_users_management.sql",
     "009": SUPABASE / "009_performance_indexes.sql",
-    "007": SUPABASE / "007_drop_username.sql",
     "008": SUPABASE / "008_allow_exception_email.sql",
+    "007": SUPABASE / "007_drop_username.sql",
 }
 RESET = SUPABASE / "000_reset.sql"
 DEMO_SEED = SUPABASE / "005_seed_demo_utb.sql"

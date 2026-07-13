@@ -36,7 +36,15 @@ class SearchQuery(BaseModel):
     q: str
 
 
-def sync_student_progress(sb, user_id: str) -> None:
+def sync_student_progress(sb, user_id: str, institution_id: str | None = None) -> None:
+    old_progress: dict[str, int] = {}
+    if institution_id:
+        prev = sb.table("student_progress").select("topic, progress_percent").eq(
+            "user_id", user_id
+        ).execute()
+        for p in prev.data or []:
+            old_progress[p["topic"]] = int(p.get("progress_percent") or 0)
+
     paths = sb.table("learning_paths").select(
         "topic, learning_path_steps(completed)"
     ).eq("user_id", user_id).execute()
@@ -65,6 +73,11 @@ def sync_student_progress(sb, user_id: str) -> None:
         for topic, pct in by_topic.items()
     ]
     sb.table("student_progress").upsert(rows, on_conflict="user_id,topic").execute()
+
+    if institution_id:
+        from services.risk_service import maybe_recompute_on_progress
+        for topic, pct in by_topic.items():
+            maybe_recompute_on_progress(user_id, institution_id, pct, old_progress.get(topic))
 
 
 class SupportRequestCreate(BaseModel):
@@ -168,7 +181,7 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
 async def create_path(body: PathCreate, user: dict = Depends(require_student)):
     path_data = await generate_learning_path(body.topic, user["id"], user.get("institution_id"))
     sb = get_supabase()
-    sync_student_progress(sb, user["id"])
+    sync_student_progress(sb, user["id"], user.get("institution_id"))
     return path_data
 
 
@@ -200,7 +213,7 @@ async def complete_step(path_id: str, step_id: str, user: dict = Depends(require
         raise HTTPException(status_code=404, detail="Paso no encontrado")
 
     sb.table("learning_path_steps").update({"completed": True}).eq("id", step_id).execute()
-    sync_student_progress(sb, user["id"])
+    sync_student_progress(sb, user["id"], user.get("institution_id"))
     return {"completed": True}
 
 
@@ -238,6 +251,13 @@ async def create_support_request(body: SupportRequestCreate, user: dict = Depend
         "chat_id": body.chat_id,
         "reason": body.reason,
     }).execute()
+    inst = user.get("institution_id")
+    if inst:
+        try:
+            from services.risk_service import persist_single_risk_report
+            persist_single_risk_report(user["id"], inst)
+        except Exception:
+            pass
     return result.data[0]
 
 
@@ -251,6 +271,13 @@ async def create_mood_checkin(body: MoodCheckinCreate, user: dict = Depends(requ
         "mood_score": body.mood_score,
         "note": body.note,
     }).execute()
+    inst = user.get("institution_id")
+    if inst:
+        try:
+            from services.risk_service import persist_single_risk_report
+            persist_single_risk_report(user["id"], inst)
+        except Exception:
+            pass
     return result.data[0]
 
 
@@ -305,7 +332,7 @@ async def unsave_resource(resource_id: str, user: dict = Depends(require_student
 @router.get("/progress")
 async def get_progress(user: dict = Depends(require_student)):
     sb = get_supabase()
-    sync_student_progress(sb, user["id"])
+    sync_student_progress(sb, user["id"], user.get("institution_id"))
     result = sb.table("student_progress").select("*").eq("user_id", user["id"]).execute()
     return result.data or []
 

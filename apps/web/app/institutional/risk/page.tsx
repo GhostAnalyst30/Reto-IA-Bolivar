@@ -15,6 +15,7 @@ interface RiskStudent {
   semester?: number;
   risk_level: string;
   risk_score: number;
+  dominant_cause?: string;
   factors?: { key: string; label: string; weight: number }[];
 }
 
@@ -22,6 +23,16 @@ const LEVEL_STYLES: Record<string, string> = {
   bajo: 'bg-green-500/20 text-green-400',
   moderado: 'bg-amber-500/20 text-amber-400',
   alto: 'bg-red-500/20 text-red-400',
+};
+
+const CAUSE_LABELS: Record<string, string> = {
+  desengagement: 'Desengagement',
+  onboarding: 'Onboarding',
+  academico: 'Académico',
+  emocional: 'Emocional',
+  economico: 'Económico',
+  motivacional: 'Motivacional',
+  social: 'Social',
 };
 
 export default function RiskReportPage() {
@@ -32,6 +43,7 @@ export default function RiskReportPage() {
   const [program, setProgram] = useState('');
   const [riskLevel, setRiskLevel] = useState('');
   const [minScore, setMinScore] = useState('');
+  const [dominantCause, setDominantCause] = useState('');
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -39,10 +51,11 @@ export default function RiskReportPage() {
     if (program) params.set('program', program);
     if (riskLevel) params.set('risk_level', riskLevel);
     if (minScore) params.set('min_score', minScore);
+    if (dominantCause) params.set('dominant_cause', dominantCause);
     const qs = params.toString();
     const data = await proxyJson<RiskStudent[]>(`/institutional/risk/students${qs ? `?${qs}` : ''}`);
     setStudents(Array.isArray(data) ? data : []);
-  }, [search, program, riskLevel, minScore]);
+  }, [search, program, riskLevel, minScore, dominantCause]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -65,14 +78,14 @@ export default function RiskReportPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold">Reporte de riesgo de deserción</h1>
-          <p className="text-muted">Estudiantes priorizados por nivel de riesgo</p>
+          <p className="text-muted">Estudiantes priorizados por nivel de riesgo — UTB</p>
         </div>
         <Button onClick={recompute} disabled={loading}>
           {loading ? 'Calculando...' : 'Recalcular riesgo'}
         </Button>
       </div>
 
-      <PortalCard className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <PortalCard className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <Label>Buscar estudiante</Label>
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre..." />
@@ -91,6 +104,15 @@ export default function RiskReportPage() {
             <option value="bajo">Bajo</option>
             <option value="moderado">Moderado</option>
             <option value="alto">Alto</option>
+          </Select>
+        </div>
+        <div>
+          <Label>Causa dominante</Label>
+          <Select value={dominantCause} onChange={(e) => setDominantCause(e.target.value)}>
+            <option value="">Todas</option>
+            {Object.entries(CAUSE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
           </Select>
         </div>
         <div>
@@ -117,6 +139,7 @@ export default function RiskReportPage() {
                 <th className="px-4 py-3 text-left font-medium">Estudiante</th>
                 <th className="px-4 py-3 text-left font-medium">Programa</th>
                 <th className="px-4 py-3 text-left font-medium">Riesgo</th>
+                <th className="px-4 py-3 text-left font-medium">Causa</th>
                 <th className="px-4 py-3 text-left font-medium">Score</th>
                 <th className="px-4 py-3 text-left font-medium">Factores</th>
                 <th className="px-4 py-3 text-left font-medium">Acción</th>
@@ -131,6 +154,9 @@ export default function RiskReportPage() {
                     <span className={`rounded px-2 py-0.5 text-xs capitalize ${LEVEL_STYLES[s.risk_level] || ''}`}>
                       {s.risk_level}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted">
+                    {s.dominant_cause ? (CAUSE_LABELS[s.dominant_cause] || s.dominant_cause) : '—'}
                   </td>
                   <td className="px-4 py-3">{s.risk_score}</td>
                   <td className="px-4 py-3 text-muted max-w-xs">

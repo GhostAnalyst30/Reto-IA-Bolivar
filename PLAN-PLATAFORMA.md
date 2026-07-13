@@ -1,6 +1,6 @@
 # Plan de la Plataforma Inteligente — UTB Te acompaña (Reto IA Bolívar)
 
-> ⚠️ **Documento de planificación original (histórico).** El producto final se llama **UTB Te acompaña**. Para el estado **actual y autoritativo** (rutas, cuentas, variables de entorno, migraciones), consulta **[DOCUMENTATION.md](DOCUMENTATION.md)** y **[NEW_IDEA.md](NEW_IDEA.md)**. Algunas decisiones aquí evolucionaron: el **login es por username + contraseña** (no email), el registro exige correos **`@utb.edu.co`**, la institución es **UTB** (slug `utb`), y la orientación vocacional quedó **fusionada en la encuesta psicométrica**.
+> ⚠️ **Documento de planificación original (histórico).** El producto final se llama **UTB Te acompaña** y opera **solo para la UTB** (sin multi-tenant). Para el estado **actual y autoritativo** (rutas, cuentas, variables de entorno, migraciones, motor de deserción), consulta **[DOCUMENTATION.md](DOCUMENTATION.md)** y **[NEW_IDEA.md](NEW_IDEA.md)**.
 
 > **Plazo:** 3 semanas (21 días) · **Go-live:** Día 21  
 > **Stack:** Vercel (frontend) · Render (FastAPI) · Supabase (DB/Auth/Realtime/pgvector) · OpenRouter (modelos gratuitos)  

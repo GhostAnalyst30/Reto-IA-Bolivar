@@ -43,7 +43,7 @@ export default function PlatformDashboardPage() {
   const stats = [
     { label: 'Usuarios totales', value: data.total_users, icon: Users, href: '/platform/users/students' },
     { label: 'Solicitudes pendientes', value: data.pending_requests, icon: Clock, href: '/platform/requests' },
-    { label: 'Sin institución', value: data.unlinked_users, icon: AlertTriangle },
+    { label: 'Sin vincular UTB', value: data.unlinked_users, icon: AlertTriangle },
   ];
 
   return (
