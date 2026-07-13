@@ -8,7 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
-  if (!profile || profile.role !== PLATFORM_ADMIN_ROLE || profile.status !== 'approved') {
+  if (!profile) {
+    redirect('/login');
+  }
+  if (profile.status === 'pending' || profile.status === 'rejected') {
+    redirect('/pending-approval');
+  }
+  if (profile.role !== PLATFORM_ADMIN_ROLE || profile.status !== 'approved') {
     redirect('/login');
   }
 

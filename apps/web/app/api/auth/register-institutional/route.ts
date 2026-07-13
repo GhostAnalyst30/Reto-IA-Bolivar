@@ -4,12 +4,13 @@ import {
   createAuthUser,
   sendConfirmLink,
 } from '@/lib/register-server';
-import { isUtbEmail } from '@/lib/utb-auth';
+import { isUtbEmail, normalizeUtbEmail } from '@/lib/utb-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, full_name, requested_role, auth_key } =
-      await request.json();
+    const body = await request.json();
+    const email = normalizeUtbEmail(body.email || '');
+    const { password, full_name, requested_role, auth_key } = body;
 
     if (!email || !password || !full_name || !requested_role || !auth_key) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
@@ -22,9 +23,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userId = await createAuthUser(email, password, full_name);
+    const userId = await createAuthUser(email, password, full_name, {
+      pendingRole: requested_role,
+    });
 
-    await callBackendRegister('/register/institutional', {
+    const registerResult = await callBackendRegister('/register/institutional', {
       user_id: userId,
       email,
       full_name,
@@ -32,8 +35,15 @@ export async function POST(request: NextRequest) {
       auth_key,
     });
 
-    // El envío de correo no debe abortar el registro: la cuenta ya existe y el
-    // usuario puede reenviar la confirmación desde la pantalla de verificación.
+    if (registerResult?.status === 'approved') {
+      return NextResponse.json({
+        sent: true,
+        already_approved: true,
+        email_sent: false,
+        user_id: userId,
+      });
+    }
+
     let emailSent = true;
     try {
       await sendConfirmLink(email, full_name);

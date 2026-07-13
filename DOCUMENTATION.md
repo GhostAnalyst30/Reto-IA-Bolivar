@@ -103,7 +103,7 @@ pnpm dev:web    # terminal 2
 
 ## 5. Cuentas
 
-Login siempre por **username + contraseña** (el email es informativo).
+Login siempre por **correo institucional + contraseña**.
 
 | Usuario | Email | Contraseña | Rol | Portal |
 |---------|-------|------------|-----|--------|
@@ -115,14 +115,16 @@ Login siempre por **username + contraseña** (el email es informativo).
 | `director_prog` | `director.demo@utb.edu.co` | `Demo2026!` | area_head | `/institutional/dashboard` |
 | `estudiante01`…`estudiante10` | `estudianteNN.demo@utb.edu.co` | `Demo2026!` | student | `/student/twin/summary` |
 
-**Registro producción:** solo correos `@utb.edu.co`. Login con **username + contraseña** (no email).
+**Registro producción:** solo correos `@utb.edu.co`. Login con **correo + contraseña**.
+
+**Registro:** requiere que la API esté corriendo (`pnpm dev:api`) y que `INTERNAL_REGISTER_KEY` sea idéntica en web y API.
 
 Los correos transaccionales se envían a cualquier dirección registrada, **excepto** cuentas demo (las que llevan `demo` antes de la `@`, p. ej. `admin.demo@utb.edu.co`).
 
 ## 6. Flujos principales
 
 ### Platform admin
-1. Login con usuario `admin` → `/platform/dashboard`
+1. Login con correo `ascendraemmanuel@gmail.com` → `/platform/dashboard`
 2. Crear institución + gestor
 3. Ver todos los usuarios en `/platform/users`
 

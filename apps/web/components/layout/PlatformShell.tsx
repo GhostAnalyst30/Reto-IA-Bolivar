@@ -5,13 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { cn, getProfilePath } from '@/lib/utils';
 import { LogOut, Menu, X, User } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ActiveNavIndicator } from '@/components/portal/ActiveNavIndicator';
 import { PageTransition } from '@/components/portal/PageTransition';
 import { NavMenu } from '@/components/layout/NavMenu';
 import type { NavEntry } from '@/lib/nav-types';
+import { useAuthTransition } from '@/contexts/AuthTransitionContext';
 
 interface PlatformShellProps {
   role: string;
@@ -25,6 +26,11 @@ export function PlatformShell({ nav, role, children }: PlatformShellProps) {
   const [open, setOpen] = useState(false);
   const supabase = createClient();
   const profilePath = getProfilePath(role);
+  const { finishTransition } = useAuthTransition();
+
+  useEffect(() => {
+    finishTransition();
+  }, [finishTransition]);
 
   async function logout() {
     await supabase.auth.signOut();

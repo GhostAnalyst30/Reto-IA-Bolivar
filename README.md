@@ -1,6 +1,6 @@
 # UTB Te acompaña — Plataforma de acompañamiento estudiantil
 
-Microservicio de la **Universidad Tecnológica de Bolívar** con portal estudiante (Digital Twin, oportunidades, recursos, aprendizaje) y suite institucional (analítica, riesgo, administración). Registro con `@utb.edu.co`, login por **usuario + contraseña**, `auth_key` para directivos.
+Microservicio de la **Universidad Tecnológica de Bolívar** con portal estudiante (Digital Twin, oportunidades, recursos, aprendizaje) y suite institucional (analítica, riesgo, administración). Registro con `@utb.edu.co`, login por **correo + contraseña**, `auth_key` para directivos.
 
 ## UTB Te acompaña
 

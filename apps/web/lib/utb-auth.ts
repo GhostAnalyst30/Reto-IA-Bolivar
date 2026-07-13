@@ -13,3 +13,7 @@ export function isUtbEmail(email: string): boolean {
     UTB_EMAIL_EXCEPTIONS.includes(normalizedEmail as (typeof UTB_EMAIL_EXCEPTIONS)[number])
   );
 }
+
+export function normalizeUtbEmail(email: string): string {
+  return email.trim().toLowerCase();
+}

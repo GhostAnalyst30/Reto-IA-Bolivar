@@ -7,6 +7,7 @@ from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
 from core.email_notify import notify_account_approved, notify_account_rejected
 from core.db_helpers import require_updated
+from core.security import invalidate_user_cache
 from routes.deps import (
     require_admin,
     require_institutional,
@@ -104,6 +105,7 @@ async def approve_request(request_id: str, admin: dict = Depends(require_institu
             data["requested_role"],
         )
 
+    invalidate_user_cache(data["user_id"])
     return {"status": "approved"}
 
 

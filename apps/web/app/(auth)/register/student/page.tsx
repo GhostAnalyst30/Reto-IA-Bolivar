@@ -7,7 +7,7 @@ import { Button, Input, Label } from '@/components/ui';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
-import { isUtbEmail } from '@/lib/utb-auth';
+import { isUtbEmail, normalizeUtbEmail } from '@/lib/utb-auth';
 
 export default function RegisterStudentPage() {
   const [fullName, setFullName] = useState('');
@@ -22,7 +22,9 @@ export default function RegisterStudentPage() {
     setLoading(true);
     setError('');
 
-    if (!isUtbEmail(email)) {
+    const normalizedEmail = normalizeUtbEmail(email);
+
+    if (!isUtbEmail(normalizedEmail)) {
       setError('Debes registrarte con un correo @utb.edu.co');
       setLoading(false);
       return;
@@ -33,7 +35,7 @@ export default function RegisterStudentPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: normalizedEmail,
           password,
           full_name: fullName,
         }),
@@ -46,13 +48,19 @@ export default function RegisterStudentPage() {
         return;
       }
 
+      if (data.already_approved) {
+        router.push('/login?message=already_approved');
+        setLoading(false);
+        return;
+      }
+
       sessionStorage.setItem(
         'pending_confirmation',
-        JSON.stringify({ email, full_name: fullName, email_sent: data.email_sent !== false })
+        JSON.stringify({ email: normalizedEmail, full_name: fullName, email_sent: data.email_sent !== false })
       );
-      router.push(`/register/check-email?email=${encodeURIComponent(email)}`);
+      router.push(`/register/check-email?email=${encodeURIComponent(normalizedEmail)}`);
     } catch {
-      setError('Error de conexión');
+      setError('Error de conexión. Verifica que la aplicación esté corriendo.');
     }
     setLoading(false);
   }

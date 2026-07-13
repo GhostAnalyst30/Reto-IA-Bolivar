@@ -6,13 +6,19 @@ import { createClient } from '@/lib/supabase/client';
 import { Button, Badge } from '@/components/ui';
 import { ClayFormCard } from '@/components/immersive/clay/ClayFormCard';
 import { UtbLogo } from '@/components/branding/UtbLogo';
-import { ROLE_LABELS } from '@/lib/utils';
+import { INSTITUTIONAL_ROLES, ROLE_LABELS } from '@/lib/utils';
+import { useAuthTransition } from '@/contexts/AuthTransitionContext';
 import { Clock, XCircle, LogOut } from 'lucide-react';
 
 export default function PendingApprovalPage() {
   const [profile, setProfile] = useState<{ status: string; role: string } | null>(null);
   const [request, setRequest] = useState<{ rejection_reason?: string; requested_role: string } | null>(null);
   const supabase = createClient();
+  const { finishTransition } = useAuthTransition();
+
+  useEffect(() => {
+    finishTransition();
+  }, [finishTransition]);
 
   useEffect(() => {
     async function load() {
@@ -32,6 +38,10 @@ export default function PendingApprovalPage() {
   }
 
   const isRejected = profile?.status === 'rejected';
+  const isInstitutionalRequest = request?.requested_role
+    ? INSTITUTIONAL_ROLES.includes(request.requested_role as typeof INSTITUTIONAL_ROLES[number])
+    : false;
+  const reregisterHref = isInstitutionalRequest ? '/register/institutional' : '/register/student';
 
   return (
     <ClayFormCard className="max-w-lg text-center">
@@ -67,7 +77,7 @@ export default function PendingApprovalPage() {
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Button variant="ghost" onClick={logout}><LogOut className="mr-2 h-4 w-4" />Cerrar sesión</Button>
           {isRejected && (
-            <Button href="/register/student" variant="secondary">Volver a registrarse</Button>
+            <Button href={reregisterHref} variant="secondary">Volver a registrarse</Button>
           )}
           <Button href="/" variant="secondary">Volver al inicio</Button>
         </div>

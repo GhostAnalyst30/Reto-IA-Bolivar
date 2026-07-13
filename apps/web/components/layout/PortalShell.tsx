@@ -5,13 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { cn, getProfilePath, ROLE_LABELS } from '@/lib/utils';
 import { LogOut, Menu, X, User } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ActiveNavIndicator } from '@/components/portal/ActiveNavIndicator';
 import { PageTransition } from '@/components/portal/PageTransition';
 import { NavMenu, filterNavEntries } from '@/components/layout/NavMenu';
 import type { NavEntry, NavItem } from '@/lib/nav-types';
+import { useAuthTransition } from '@/contexts/AuthTransitionContext';
 
 type PortalType = 'student' | 'institutional';
 
@@ -38,6 +39,11 @@ export function PortalShell({
   const [learningOpen, setLearningOpen] = useState(true);
   const supabase = createClient();
   const profilePath = getProfilePath(role);
+  const { finishTransition } = useAuthTransition();
+
+  useEffect(() => {
+    finishTransition();
+  }, [finishTransition]);
 
   const filteredNav = filterNavEntries(nav, !!isAdmin);
   const filteredLearning = (learningNav || []).filter((n) => !n.adminOnly || isAdmin);

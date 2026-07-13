@@ -5,7 +5,7 @@ import {
   createAuthUser,
   sendConfirmLink,
 } from '@/lib/register-server';
-import { isUtbEmail } from '@/lib/utb-auth';
+import { isUtbEmail, normalizeUtbEmail } from '@/lib/utb-auth';
 
 const schema = z.object({
   email: z.string().email().max(255),
@@ -16,7 +16,8 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = schema.parse(await request.json());
-    const { email, password, full_name } = body;
+    const email = normalizeUtbEmail(body.email);
+    const { password, full_name } = body;
 
     if (!isUtbEmail(email)) {
       return NextResponse.json(

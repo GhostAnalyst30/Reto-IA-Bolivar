@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getEmailAppUrl, sendConfirmationEmail, sendPasswordResetEmail, shouldSkipOutgoingEmail } from '@/lib/email';
 import { API_URL } from '@/lib/api';
 
+const BACKEND_REGISTER_TIMEOUT_MS = 10_000;
+
 async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
   const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const found = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
@@ -11,7 +13,8 @@ async function findUserIdByEmail(admin: ReturnType<typeof createAdminClient>, em
 export async function createAuthUser(
   email: string,
   password: string,
-  fullName: string
+  fullName: string,
+  options?: { pendingRole?: string }
 ) {
   const admin = createAdminClient();
 
@@ -23,14 +26,14 @@ export async function createAuthUser(
   });
 
   if (data.user) {
-    await ensurePublicUserProfile(admin, data.user.id, email, fullName);
+    await ensurePublicUserProfile(admin, data.user.id, email, fullName, options?.pendingRole);
     return data.user.id;
   }
 
   if (error?.message?.toLowerCase().includes('already')) {
     const existingId = await findUserIdByEmail(admin, email);
     if (existingId) {
-      await ensurePublicUserProfile(admin, existingId, email, fullName);
+      await ensurePublicUserProfile(admin, existingId, email, fullName, options?.pendingRole);
       return existingId;
     }
   }
@@ -42,7 +45,8 @@ async function ensurePublicUserProfile(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
   email: string,
-  fullName: string
+  fullName: string,
+  pendingRole = 'student'
 ) {
   const { data: existing } = await admin
     .from('users')
@@ -67,7 +71,7 @@ async function ensurePublicUserProfile(
       email,
       full_name: fullName,
       status: 'pending',
-      role: 'student',
+      role: pendingRole,
     },
     { onConflict: 'id' }
   );
@@ -83,19 +87,41 @@ export async function callBackendRegister(
   const key = process.env.INTERNAL_REGISTER_KEY;
   if (!key) throw new Error('INTERNAL_REGISTER_KEY no configurada');
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Internal-Register-Key': key,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.detail || data.error || 'Error al registrar solicitud');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BACKEND_REGISTER_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Register-Key': key,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('Clave interna de registro inválida. Verifica INTERNAL_REGISTER_KEY en web y API.');
+      }
+      if (res.status === 503) {
+        throw new Error('El servidor no está disponible o la institución UTB no está configurada. ¿Está corriendo la API?');
+      }
+      throw new Error(data.detail || data.error || 'Error al registrar solicitud');
+    }
+    return data;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('El servidor de registro no respondió a tiempo. Verifica que la API esté corriendo (pnpm dev:api).');
+    }
+    if (err instanceof TypeError) {
+      throw new Error('No se pudo conectar con la API de registro. Verifica API_URL y que la API esté corriendo.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  return data;
 }
 
 function buildConfirmPageLink(params: {
