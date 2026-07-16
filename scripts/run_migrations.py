@@ -21,6 +21,7 @@ MIGRATIONS = [
     SUPABASE / "003_seed_utb.sql",
 ]
 PATCHES = {
+    "014": SUPABASE / "014_messages_counselor_role.sql",
     "013": SUPABASE / "013_platform_dashboard_roles.sql",
     "012": SUPABASE / "012_dropout_enhancements.sql",
     "011": SUPABASE / "011_align_metrics.sql",

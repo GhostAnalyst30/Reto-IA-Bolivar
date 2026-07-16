@@ -70,8 +70,11 @@ Perfil Digital Twin:
 
     messages = [{"role": "system", "content": system}]
     for msg in history[-12:]:
-        if msg["role"] in ("user", "assistant"):
-            messages.append({"role": msg["role"], "content": msg["content"]})
+        role = msg["role"]
+        if role == "counselor":
+            role = "assistant"
+        if role in ("user", "assistant"):
+            messages.append({"role": role, "content": msg["content"]})
     if not history or history[-1].get("content") != new_message:
         messages.append({"role": "user", "content": new_message})
 

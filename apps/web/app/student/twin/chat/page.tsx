@@ -10,6 +10,12 @@ import { proxyJson, proxyStream } from '@/lib/proxy';
 
 interface Chat { id: string; title: string; updated_at: string }
 interface Message { id: string; role: string; content: string }
+
+const OFFLINE_COUNSELOR_REPLY =
+  'Hola. Soy **María Fernanda Ortiz** del equipo de bienestar UTB (psicologo.demo@utb.edu.co). '
+  + 'Recibí tu mensaje. Este espacio es confidencial: cuéntame con calma qué te preocupa hoy '
+  + 'y te acompaño paso a paso.\n\n'
+  + '— **Lic. María Fernanda Ortiz**\nPsicóloga · Bienestar estudiantil UTB\n*psicologo.demo@utb.edu.co*';
 interface SelfHelp { id: string; title: string; description?: string; url?: string }
 
 export default function TwinChatPage() {
@@ -92,17 +98,22 @@ export default function TwinChatPage() {
     setStreaming(true);
     setError('');
     let assistant = '';
+    let counselorReply = false;
     try {
       await proxyStream(`/chats/${activeChat}/messages`, { content }, {
         onToken: (token) => {
           assistant += token;
+          if (assistant.includes('psicologo.demo@utb.edu.co') || assistant.includes('Bienestar estudiantil UTB')) {
+            counselorReply = true;
+          }
           setMessages((m) => {
             const copy = [...m];
             const last = copy[copy.length - 1];
-            if (last?.role === 'assistant') {
-              copy[copy.length - 1] = { ...last, content: assistant };
+            const role = counselorReply ? 'counselor' : 'assistant';
+            if (last?.role === 'assistant' || last?.role === 'counselor') {
+              copy[copy.length - 1] = { ...last, role, content: assistant };
             } else {
-              copy.push({ id: `a-${Date.now()}`, role: 'assistant', content: assistant });
+              copy.push({ id: `a-${Date.now()}`, role, content: assistant });
             }
             return copy;
           });
@@ -111,13 +122,17 @@ export default function TwinChatPage() {
       const userCount = nextMsgs.filter((m) => m.role === 'user').length;
       if (userCount >= 15) setLimitReached(true);
       loadSelfHelpFromConversation(nextMsgs, content);
+      if (activeChat) loadMessages(activeChat);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       if (msg.includes('409') || msg.toLowerCase().includes('nuevo chat') || msg.toLowerCase().includes('15')) {
         setLimitReached(true);
         setError('Has alcanzado el límite de 15 mensajes. Inicia una conversación nueva para continuar.');
       } else {
-        setMessages((m) => [...m, { id: `e-${Date.now()}`, role: 'assistant', content: 'Lo siento, no pude responder. Intenta de nuevo.' }]);
+        setMessages((m) => [
+          ...m.filter((x) => x.role !== 'assistant' || x.content !== assistant),
+          { id: `c-${Date.now()}`, role: 'counselor', content: OFFLINE_COUNSELOR_REPLY },
+        ]);
       }
     }
     setStreaming(false);
@@ -181,9 +196,22 @@ export default function TwinChatPage() {
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                  m.role === 'user' ? 'bg-brand-amber/20' : 'border border-brand-border bg-brand-bg'
+                  m.role === 'user'
+                    ? 'bg-brand-amber/20'
+                    : m.role === 'counselor'
+                      ? 'border border-emerald-500/30 bg-emerald-500/5'
+                      : 'border border-brand-border bg-brand-bg'
                 }`}>
-                  {m.role === 'assistant' ? <MarkdownMessage content={m.content} /> : m.content}
+                  {m.role === 'counselor' && (
+                    <p className="mb-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      Bienestar UTB · psicologo.demo@utb.edu.co
+                    </p>
+                  )}
+                  {m.role === 'assistant' || m.role === 'counselor' ? (
+                    <MarkdownMessage content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </div>
             ))}

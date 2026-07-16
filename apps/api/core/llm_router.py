@@ -128,8 +128,9 @@ async def complete_with_fallback(
     model: str | None = None,
     *,
     skip_thinking: bool = False,
+    fallback: Callable[[], str] | None = None,
 ) -> tuple[str, str, str]:
-    """Returns (reasoning, answer, provider_used). On total failure answer = FALLBACK_MESSAGE."""
+    """Returns (reasoning, answer, provider_used). On total failure uses fallback or FALLBACK_MESSAGE."""
     model = model or settings.llm_model_tutor
     enriched = messages.copy()
     if not skip_thinking:
@@ -150,6 +151,8 @@ async def complete_with_fallback(
         providers.append(("litellm", lambda m=enriched: _litellm_complete(m)))
 
     if not providers:
+        if fallback:
+            return "", fallback(), "counselor"
         demo = "Entiendo tu consulta. Configure las API keys para respuestas completas del tutor IA institucional UTB."
         return "", demo, "demo"
 
@@ -168,7 +171,8 @@ async def complete_with_fallback(
         "All LLM providers failed (%s tried); returning fallback message",
         ", ".join(name for name, _ in providers) or "none",
     )
-    return "", FALLBACK_MESSAGE, "failed"
+    answer = fallback() if fallback else FALLBACK_MESSAGE
+    return "", answer, "failed"
 
 
 def _chunk_text(text: str, chunk_size: int = 48) -> list[str]:
@@ -181,18 +185,23 @@ async def stream_with_fallback(
     model: str | None = None,
     *,
     skip_thinking: bool = False,
+    fallback: Callable[[], str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Yields dicts: {type: thinking|reasoning|token|done|error, content/message}."""
     yield {"type": "thinking", "message": "Analizando tu pregunta y buscando contexto…"}
 
-    reasoning, answer, provider = await complete_with_fallback(messages, model, skip_thinking=skip_thinking)
+    reasoning, answer, provider = await complete_with_fallback(
+        messages, model, skip_thinking=skip_thinking, fallback=fallback,
+    )
 
     if reasoning:
         yield {"type": "reasoning", "content": reasoning}
 
-    if provider == "failed":
-        yield {"type": "token", "content": FALLBACK_MESSAGE}
-        yield {"type": "done", "content": FALLBACK_MESSAGE}
+    if provider == "failed" or provider == "counselor":
+        answer = fallback() if fallback else FALLBACK_MESSAGE
+        for chunk in _chunk_text(answer):
+            yield {"type": "token", "content": chunk}
+        yield {"type": "done", "content": answer, "counselor": True}
         return
 
     yield {"type": "thinking", "message": "Generando respuesta…"}

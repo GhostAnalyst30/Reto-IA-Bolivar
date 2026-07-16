@@ -5,9 +5,10 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
-from core.llm_router import stream_with_fallback
+from core.llm_router import stream_with_fallback, _chunk_text
 from routes.deps import require_student
 from agents.digital_twin_agent import build_digital_twin_messages
+from services.psychologist_fallback import build_counselor_response
 from agents.path_agent import generate_learning_path
 from agents.search_agent import search_resources
 from agents.vocational_agent import get_programs
@@ -144,9 +145,11 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
 
     async def event_generator():
         full = ""
+        is_counselor = False
+        counselor_fn = lambda: build_counselor_response(body.content, user)
         try:
             yield {"event": "thinking", "data": json.dumps({"message": "Buscando recursos del catálogo…"})}
-            async for event in stream_with_fallback(messages):
+            async for event in stream_with_fallback(messages, fallback=counselor_fn):
                 et = event.get("type")
                 if et == "thinking":
                     yield {"event": "thinking", "data": json.dumps({"message": event.get("message", "")})}
@@ -158,21 +161,38 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                     yield {"event": "token", "data": json.dumps({"token": token})}
                 elif et == "done":
                     full = event.get("content", full)
+                    is_counselor = bool(event.get("counselor"))
+            if not full.strip():
+                full = counselor_fn()
+                is_counselor = True
+                for chunk in _chunk_text(full):
+                    yield {"event": "token", "data": json.dumps({"token": chunk})}
             if full.strip():
                 sb.table("messages").insert({
-                    "chat_id": chat_id, "role": "assistant", "content": full.strip(),
+                    "chat_id": chat_id,
+                    "role": "counselor" if is_counselor else "assistant",
+                    "content": full.strip(),
                 }).execute()
                 sb.table("chats").update({
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }).eq("id", chat_id).execute()
-            yield {"event": "done", "data": json.dumps({"content": full.strip()})}
+            yield {"event": "done", "data": json.dumps({"content": full.strip(), "counselor": is_counselor})}
         except Exception as exc:
-            logger_msg = str(exc)
             import logging
-            logging.getLogger(__name__).error("Chat stream error: %s", logger_msg)
-            fallback = "Lo siento, el servidor no funciona"
-            yield {"event": "token", "data": json.dumps({"token": fallback})}
-            yield {"event": "done", "data": json.dumps({"content": fallback})}
+            logging.getLogger(__name__).error("Chat stream error: %s", exc)
+            full = counselor_fn()
+            is_counselor = True
+            for chunk in _chunk_text(full):
+                yield {"event": "token", "data": json.dumps({"token": chunk})}
+            sb.table("messages").insert({
+                "chat_id": chat_id,
+                "role": "counselor",
+                "content": full.strip(),
+            }).execute()
+            sb.table("chats").update({
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", chat_id).execute()
+            yield {"event": "done", "data": json.dumps({"content": full.strip(), "counselor": True})}
 
     return EventSourceResponse(event_generator())
 
