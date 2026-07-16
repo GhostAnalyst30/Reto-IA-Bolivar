@@ -28,5 +28,7 @@ services:
         sync: false
       - key: INTERNAL_REGISTER_KEY
         sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
       - key: APP_URL
         sync: false

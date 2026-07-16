@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PortalButton } from '@/components/portal/PortalButton';
@@ -8,8 +8,8 @@ import { LoadingState } from '@/components/ui';
 import { MetricCard } from '@/components/portal/MetricCard';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { StaggerList, StaggerItem } from '@/components/portal/StaggerList';
-import { proxyJson } from '@/lib/proxy';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { LazyBarChart, LazyPieChart } from '@/components/portal/charts/LazyCharts';
+import { useProxyJson } from '@/lib/use-proxy-json';
 
 interface Dashboard {
   kpis: { metric_name: string; metric_value: number; metric_unit?: string }[];
@@ -23,25 +23,16 @@ interface Dashboard {
 const COLORS = ['#F28C28', '#003A70', '#4A90C2', '#71717a'];
 
 export default function InstitutionalDashboardPage() {
-  const [data, setData] = useState<Dashboard | null>(null);
   const router = useRouter();
+  const { data, error, isLoading, mutate } = useProxyJson<Dashboard>('/institutional/dashboard');
 
   useEffect(() => {
-    function load() {
-      proxyJson<Dashboard>('/institutional/dashboard')
-        .then(setData)
-        .catch(() => setData(null));
-    }
-    load();
-    const onInstChange = () => {
-      setData(null);
-      load();
-    };
+    const onInstChange = () => mutate();
     window.addEventListener('institution-context-changed', onInstChange);
     return () => window.removeEventListener('institution-context-changed', onInstChange);
-  }, []);
+  }, [mutate]);
 
-  if (!data) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div>
@@ -52,6 +43,17 @@ export default function InstitutionalDashboardPage() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="space-y-4 p-4">
+        <h1 className="font-display text-2xl font-bold">Dashboard UTB</h1>
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   if (data.kpis.length === 0) {
     return (
@@ -95,14 +97,7 @@ export default function InstitutionalDashboardPage() {
           <PortalCard className="min-h-[260px]">
           <p className="mb-4 font-medium">Matriculación y actividad</p>
           {enrollmentTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={enrollmentTrend}>
-                <XAxis dataKey="label" stroke="#71717a" fontSize={12} />
-                <YAxis stroke="#71717a" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#F28C28" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <LazyBarChart data={enrollmentTrend} height={200} />
           ) : (
             <p className="text-sm text-muted">Sin datos de matriculación.</p>
           )}
@@ -112,16 +107,7 @@ export default function InstitutionalDashboardPage() {
           <PortalCard className="min-h-[260px]">
           <p className="mb-4 font-medium">Engagement</p>
           {engagement.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={engagement} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={70} label>
-                  {engagement.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <LazyPieChart data={engagement} colors={COLORS} height={200} />
           ) : (
             <p className="text-sm text-muted">Sin datos de engagement.</p>
           )}

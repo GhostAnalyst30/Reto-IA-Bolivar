@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { MetricCard } from '@/components/portal/MetricCard';
 import { StaggerList, StaggerItem } from '@/components/portal/StaggerList';
-import { proxyJson } from '@/lib/proxy';
+import { LazyBarChart, LazyPieChart } from '@/components/portal/charts/LazyCharts';
+import { useProxyJson } from '@/lib/use-proxy-json';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Users, Clock, AlertTriangle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Dashboard {
   total_users: number;
@@ -21,18 +20,9 @@ interface Dashboard {
 const COLORS = ['#6366F1', '#F28C28', '#003A70', '#4A90C2', '#71717a', '#22c55e'];
 
 export default function PlatformDashboardPage() {
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, error, isLoading } = useProxyJson<Dashboard>('/platform/dashboard');
 
-  useEffect(() => {
-    proxyJson<Dashboard>('/platform/dashboard')
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p className="text-muted p-6">Cargando dashboard...</p>;
+  if (isLoading) return <p className="text-muted p-6">Cargando dashboard...</p>;
   if (error) return <p className="text-red-500 p-6">{error}</p>;
   if (!data) return null;
 
@@ -71,16 +61,7 @@ export default function PlatformDashboardPage() {
         <PortalCard className="min-h-[280px]">
           <p className="mb-4 font-medium">Usuarios por rol</p>
           {roleData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={roleData} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={80} label>
-                  {roleData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <LazyPieChart data={roleData} colors={COLORS} />
           ) : (
             <p className="text-sm text-muted">Sin datos de roles.</p>
           )}
@@ -89,14 +70,7 @@ export default function PlatformDashboardPage() {
         <PortalCard className="min-h-[280px]">
           <p className="mb-4 font-medium">Distribución por rol (barras)</p>
           {roleData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={roleData}>
-                <XAxis dataKey="label" stroke="#71717a" fontSize={11} />
-                <YAxis stroke="#71717a" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="value" fill="var(--portal-accent)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <LazyBarChart data={roleData} fill="var(--portal-accent)" />
           ) : (
             <p className="text-sm text-muted">Sin datos.</p>
           )}

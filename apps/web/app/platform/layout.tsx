@@ -1,13 +1,11 @@
 import { PlatformShell } from '@/components/layout/PlatformShell';
 import { PLATFORM_FULL_NAV } from '@/lib/utils';
-import { getProfile } from '@/lib/supabase/server';
+import { getPortalProfile } from '@/lib/auth-context';
 import { redirect } from 'next/navigation';
 import { PLATFORM_ADMIN_ROLE } from '@/lib/utils';
 
-export const dynamic = 'force-dynamic';
-
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
+  const profile = await getPortalProfile();
   if (!profile) {
     redirect('/login');
   }

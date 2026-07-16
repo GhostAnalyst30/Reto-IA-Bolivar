@@ -15,7 +15,7 @@ export default function PlatformStudentsPage() {
           + Crear estudiante
         </Link>
       </div>
-      <UsersAccordionPanel studentOnly />
+      <UsersAccordionPanel studentOnly detailBasePath="/institutional/students" />
     </div>
   );
 }

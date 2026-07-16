@@ -1,4 +1,5 @@
 """Platform admin routes — global institutions and users."""
+import json
 import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -58,15 +59,12 @@ async def platform_dashboard(admin: dict = Depends(require_platform_admin)):
 
         recent_res = fetch_recent()
         recent_users = recent_res.data or []
-        by_institution: dict[str, int] = {}
-        by_role: dict[str, int] = {}
-        counts_res = sb.table("users").select("institution_id, role").execute()
-        for u in counts_res.data or []:
-            r = u.get("role") or "unknown"
-            by_role[r] = by_role.get(r, 0) + 1
-            iid = u.get("institution_id")
-            if iid:
-                by_institution[iid] = by_institution.get(iid, 0) + 1
+        by_role = stats.get("users_by_role") or {}
+        by_institution = stats.get("users_by_institution") or {}
+        if isinstance(by_role, str):
+            by_role = json.loads(by_role)
+        if isinstance(by_institution, str):
+            by_institution = json.loads(by_institution)
 
         result = {
             "total_users": int(stats.get("total_users") or 0),

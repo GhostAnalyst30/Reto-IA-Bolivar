@@ -6,6 +6,7 @@ import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { ROLE_LABELS } from '@/lib/utils';
 import { Check, X } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
+import { useProxyJson } from '@/lib/use-proxy-json';
 
 interface Request {
   id: string;
@@ -16,42 +17,28 @@ interface Request {
 }
 
 export function RequestsPanel() {
-  const [requests, setRequests] = useState<Request[]>([]);
+  const { data, error, isLoading, mutate } = useProxyJson<Request[]>('/admin/requests');
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await proxyJson<Request[]>('/admin/requests');
-      setRequests(Array.isArray(data) ? data : []);
-      setError('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar solicitudes');
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const requests = Array.isArray(data) ? data : [];
 
   useEffect(() => {
-    load();
-    const onChange = () => load();
+    const onChange = () => mutate();
     window.addEventListener('institution-context-changed', onChange);
     return () => window.removeEventListener('institution-context-changed', onChange);
-  }, []);
+  }, [mutate]);
 
   async function approve(id: string) {
     setActionLoading(true);
-    setError('');
+    setActionError('');
     try {
       await proxyJson(`/admin/requests/${id}/approve`, { method: 'POST', body: '{}' });
-      await load();
+      await mutate();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al aprobar');
+      setActionError(e instanceof Error ? e.message : 'Error al aprobar');
     } finally {
       setActionLoading(false);
     }
@@ -66,20 +53,22 @@ export function RequestsPanel() {
       });
       setRejectId(null);
       setReason('');
-      await load();
+      await mutate();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al rechazar');
+      setActionError(e instanceof Error ? e.message : 'Error al rechazar');
     } finally {
       setActionLoading(false);
     }
   }
 
+  const displayError = actionError || error;
+
   return (
     <div className="space-y-6">
       <ActionOverlay show={actionLoading} message="Procesando solicitud..." />
       <h2 className="text-2xl font-semibold">Solicitudes pendientes</h2>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {loading ? (
+      {displayError && <p className="text-sm text-red-400">{displayError}</p>}
+      {isLoading ? (
         <Card><p className="text-zinc-500">Cargando solicitudes...</p></Card>
       ) : requests.length === 0 ? (
         <Card><p className="text-zinc-500">No hay solicitudes pendientes.</p></Card>

@@ -75,6 +75,6 @@ registry = CacheRegistry()
 
 # Shared caches — TTLs tuned for read-heavy, eventually-consistent dashboards
 user_profile_cache = registry.cache("user_profile", ttl_seconds=120.0, max_size=2048)
-dashboard_cache = registry.cache("dashboard", ttl_seconds=120.0, max_size=128)
+dashboard_cache = registry.cache("dashboard", ttl_seconds=300.0, max_size=128)
 risk_cache = registry.cache("risk", ttl_seconds=180.0, max_size=128)
-platform_cache = registry.cache("platform", ttl_seconds=120.0, max_size=32)
+platform_cache = registry.cache("platform", ttl_seconds=300.0, max_size=32)

@@ -13,7 +13,10 @@ def _fetch_user_profile(user_id: str) -> dict:
     profile = sb.table("users").select(_PROFILE_FIELDS).eq("id", user_id).limit(1).execute()
     rows = profile.data or []
     if not rows:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Perfil no encontrado. Contacte al administrador.",
+        )
     return rows[0]
 
 

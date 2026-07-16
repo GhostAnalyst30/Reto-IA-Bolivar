@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Search } from 'lucide-react';
 import { Badge, Button, Input, Label, Select } from '@/components/ui';
@@ -71,10 +71,17 @@ export function UsersAccordionPanel({
     }
   }, [name, program, roleFilter, ageMin, ageMax, studentOnly, directivoOnly]);
 
+  const skipDebounce = useRef(true);
+
   useEffect(() => {
+    if (skipDebounce.current) {
+      skipDebounce.current = false;
+      load();
+      return;
+    }
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [load]);
+  }, [name, program, roleFilter, ageMin, ageMax, load]);
 
   return (
     <div className="space-y-4">

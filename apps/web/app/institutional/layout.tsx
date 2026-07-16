@@ -1,13 +1,11 @@
 import { PlatformShell } from '@/components/layout/PlatformShell';
 import { PortalShell } from '@/components/layout/PortalShell';
-import { getProfile } from '@/lib/supabase/server';
+import { getPortalProfile } from '@/lib/auth-context';
 import { redirect } from 'next/navigation';
 import { INSTITUTIONAL_ROLES, isPlatformAdmin, getInstitutionalNav, PLATFORM_FULL_NAV } from '@/lib/utils';
 
-export const dynamic = 'force-dynamic';
-
 export default async function InstitutionalLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
+  const profile = await getPortalProfile();
   if (!profile || profile.status !== 'approved') {
     redirect('/pending-approval');
   }

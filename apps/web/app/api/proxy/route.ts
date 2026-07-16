@@ -12,7 +12,7 @@ interface AuthContext {
 
 // In-memory role cache (persists per server instance). Avoids a Supabase DB
 // round-trip on every proxied request; roles rarely change within a session.
-const ROLE_TTL_MS = 60_000;
+const ROLE_TTL_MS = 120_000;
 const roleCache = new Map<string, { role: string; expires: number }>();
 
 async function getAuth(): Promise<AuthContext> {
@@ -55,15 +55,22 @@ async function authorize(path: string | null): Promise<
 }
 
 async function forward(method: string, path: string, token: string | undefined, body?: string) {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: body !== undefined
-      ? { 'Content-Type': 'application/json', ...authHeaders(token) }
-      : authHeaders(token),
-    ...(body !== undefined ? { body } : {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: body !== undefined
+        ? { 'Content-Type': 'application/json', ...authHeaders(token) }
+        : authHeaders(token),
+      ...(body !== undefined ? { body } : {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json(
+      { detail: 'Backend no disponible. Intente de nuevo en unos segundos.' },
+      { status: 503 },
+    );
+  }
 }
 
 export async function GET(request: NextRequest) {

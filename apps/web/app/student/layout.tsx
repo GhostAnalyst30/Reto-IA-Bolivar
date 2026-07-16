@@ -1,12 +1,10 @@
 import { PortalShell, STUDENT_NAV, STUDENT_NAV_LEARNING } from '@/components/layout/PortalShell';
-import { getProfile } from '@/lib/supabase/server';
+import { getPortalProfile } from '@/lib/auth-context';
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/utils';
 
-export const dynamic = 'force-dynamic';
-
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
+  const profile = await getPortalProfile();
   if (!profile || profile.status !== 'approved') {
     redirect('/pending-approval');
   }

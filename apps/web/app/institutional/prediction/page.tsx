@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LoadingState } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
-import { proxyJson } from '@/lib/proxy';
+import { useProxyJson } from '@/lib/use-proxy-json';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 
 interface Prediction {
@@ -21,13 +20,9 @@ const CONFIDENCE_LABELS: Record<string, string> = {
 };
 
 export default function PredictionPage() {
-  const [data, setData] = useState<Prediction | null>(null);
+  const { data, error, isLoading } = useProxyJson<Prediction>('/institutional/prediction');
 
-  useEffect(() => {
-    proxyJson<Prediction>('/institutional/prediction').then(setData).catch(() => setData(null));
-  }, []);
-
-  if (!data) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <h1 className="font-display text-2xl font-bold">Predicción de retención</h1>
@@ -35,6 +30,17 @@ export default function PredictionPage() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-display text-2xl font-bold">Predicción de retención</h1>
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   return (
     <div className="space-y-6">

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
+import { LazyBarChart, LazyPieChart } from '@/components/portal/charts/LazyCharts';
 import { proxyJson } from '@/lib/proxy';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useProxyJson } from '@/lib/use-proxy-json';
 
 interface Dashboard {
   kpis: { metric_name: string; metric_value: number; metric_unit?: string }[];
@@ -18,26 +19,25 @@ interface Dashboard {
 const COLORS = ['#003A70', '#F28C28', '#4A90C2', '#6366F1'];
 
 export default function ExecutiveSummaryPage() {
+  const { data: dashboard, error: dashError, isLoading: dashLoading } = useProxyJson<Dashboard>(
+    '/institutional/dashboard',
+  );
   const [insights, setInsights] = useState('');
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState('');
+  const [loadingInsights, setLoadingInsights] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  async function loadInsights() {
+    setLoadingInsights(true);
+    setInsightsError('');
     try {
-      const [dash, dir] = await Promise.all([
-        proxyJson<Dashboard>('/institutional/dashboard'),
-        proxyJson<{ insights: string }>('/institutional/director/chat', { method: 'POST' }),
-      ]);
-      setDashboard(dash);
+      const dir = await proxyJson<{ insights: string }>('/institutional/director/chat', { method: 'POST' });
       setInsights(dir.insights || '');
-    } catch {
-      setInsights('No se pudo generar el resumen. Intente más tarde.');
+    } catch (e) {
+      setInsightsError(e instanceof Error ? e.message : 'No se pudo generar el resumen.');
+    } finally {
+      setLoadingInsights(false);
     }
-    setLoading(false);
   }
-
-  useEffect(() => { load(); }, []);
 
   const enrollment = dashboard?.charts?.enrollment_trend ?? [];
   const engagement = dashboard?.charts?.engagement ?? [];
@@ -49,59 +49,54 @@ export default function ExecutiveSummaryPage() {
           <h1 className="font-display text-2xl font-bold">Resumen ejecutivo</h1>
           <p className="text-muted">Análisis institucional UTB con KPIs en tiempo real</p>
         </div>
-        <Button size="sm" onClick={load} disabled={loading}>{loading ? 'Generando…' : 'Regenerar análisis'}</Button>
+        <Button size="sm" onClick={loadInsights} disabled={loadingInsights}>
+          {loadingInsights ? 'Generando…' : insights ? 'Regenerar análisis' : 'Generar análisis IA'}
+        </Button>
       </div>
+
+      {dashError && <p className="text-red-500">{dashError}</p>}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PortalCard>
           <h2 className="font-semibold mb-3">Insights del Director de IA</h2>
+          {insightsError && <p className="text-red-400 text-sm mb-2">{insightsError}</p>}
           {insights ? (
             <MarkdownMessage content={insights} className="text-muted" />
           ) : (
-            <p className="text-muted">Cargando resumen…</p>
+            <p className="text-muted">
+              {loadingInsights ? 'Generando resumen…' : 'Pulse «Generar análisis IA» para obtener insights.'}
+            </p>
           )}
         </PortalCard>
 
         <div className="space-y-4">
           <PortalCard className="min-h-[200px]">
             <p className="mb-3 font-medium">KPIs clave</p>
-            <ul className="space-y-2 text-sm">
-              {(dashboard?.kpis || []).slice(0, 6).map((k) => (
-                <li key={k.metric_name} className="flex justify-between border-b border-brand-border/50 pb-1">
-                  <span className="text-muted capitalize">{k.metric_name.replace(/_/g, ' ')}</span>
-                  <span className="font-semibold">{k.metric_value}{k.metric_unit ? ` ${k.metric_unit}` : ''}</span>
-                </li>
-              ))}
-            </ul>
+            {dashLoading ? (
+              <p className="text-muted text-sm">Cargando KPIs…</p>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {(dashboard?.kpis || []).slice(0, 6).map((k) => (
+                  <li key={k.metric_name} className="flex justify-between border-b border-brand-border/50 pb-1">
+                    <span className="text-muted capitalize">{k.metric_name.replace(/_/g, ' ')}</span>
+                    <span className="font-semibold">{k.metric_value}{k.metric_unit ? ` ${k.metric_unit}` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </PortalCard>
 
           {enrollment.length > 0 && (
             <PortalCard className="min-h-[220px]">
               <p className="mb-3 font-medium">Matriculación</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={enrollment}>
-                  <XAxis dataKey="label" fontSize={11} />
-                  <YAxis fontSize={11} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#003A70" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <LazyBarChart data={enrollment} fill="#003A70" height={180} />
             </PortalCard>
           )}
 
           {engagement.length > 0 && (
             <PortalCard className="min-h-[220px]">
               <p className="mb-3 font-medium">Engagement</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={engagement} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} label>
-                    {engagement.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <LazyPieChart data={engagement} colors={COLORS} height={180} />
             </PortalCard>
           )}
         </div>

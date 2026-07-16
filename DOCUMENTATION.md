@@ -24,8 +24,9 @@ Ejecutar **en orden**:
 | 8 | `supabase/010_users_management.sql` | RPC usuarios con perfil |
 | 9 | `supabase/011_align_metrics.sql` | Alinear `active_7d` con Digital Twin |
 | 10 | `supabase/012_dropout_enhancements.sql` | Apoyo humano RLS, outcomes, `academic_records`, pruning |
+| 11 | `supabase/013_platform_dashboard_roles.sql` | RPC dashboard con desglose por rol/institución |
 
-Los pasos 1–4 también se aplican con `python scripts/run_migrations.py --reset`. Los parches 009–012 con `python scripts/run_migrations.py` (sin `--reset`).
+Los pasos 1–4 también se aplican con `python scripts/run_migrations.py --reset`. Los parches 009–013 con `python scripts/run_migrations.py --patch ID`.
 
 ### Alcance UTB-only
 
@@ -129,7 +130,7 @@ Login siempre por **correo institucional + contraseña**.
 | Usuario | Email | Contraseña | Rol | Portal |
 |---------|-------|------------|-----|--------|
 | `admin` | `ascendraemmanuel@gmail.com` | `Immanuel3008` (o `SEED_DEMO_PASSWORD`) | platform_admin | `/platform/dashboard` |
-| `admin_utb` | `admin.demo@utb.edu.co` | `Demo2026!` | admin institucional | `/institutional/admin` |
+| `admin_utb` | `admin.demo@utb.edu.co` | `Demo2026!` | admin institucional | `/institutional/admin/requests` |
 | `rector` | `rector.demo@utb.edu.co` | `Demo2026!` | rector | `/institutional/dashboard` |
 | `vicerrector` | `vicerrector.demo@utb.edu.co` | `Demo2026!` | vice_president | `/institutional/dashboard` |
 | `decano` | `decano.demo@utb.edu.co` | `Demo2026!` | dean | `/institutional/dashboard` |
@@ -146,23 +147,23 @@ Los correos transaccionales se envían a cualquier dirección registrada, **exce
 
 ### Platform admin
 1. Login con correo `ascendraemmanuel@gmail.com` → `/platform/dashboard`
-2. Crear institución + gestor
-3. Ver todos los usuarios en `/platform/users`
+2. Gestionar solicitudes en `/platform/requests`
+3. Ver usuarios en `/platform/users`
 
 ### Gestor institucional
-1. Login → `/institutional/admin`
+1. Login → `/institutional/admin/requests`
 2. Aprobar solicitudes en `/institutional/admin/requests`
 3. Generar `auth_key` en `/institutional/admin/auth-keys`
 4. Compartir clave para registro en `/register/institutional`
 
 ### Estudiante
-1. `/register/student` — correo `@utb.edu.co`, username, contraseña
+1. `/register/student` — correo `@utb.edu.co` + contraseña
 2. Esperar aprobación en `/pending-approval`
 3. Encuesta psicométrica → Digital Twin → `/student/*`
 
 ### Directivo
-1. `/register/institutional` — `@utb.edu.co` + username + auth_key activa
-2. Login con username + contraseña
+1. `/register/institutional` — `@utb.edu.co` + auth_key activa
+2. Login con **correo + contraseña**
 
 ### Perfil
 Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
@@ -213,7 +214,7 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Acceso a BD y `auth.admin` |
 | `ALLOWED_ORIGINS` | ✅ | CORS = tu dominio de Vercel |
 | `INTERNAL_REGISTER_KEY` | ✅ | **Debe coincidir con Vercel** |
-| `SUPABASE_JWT_SECRET` | ⬜ (recomendada) | Verificación JWT local (más rápida) |
+| `SUPABASE_JWT_SECRET` | ⬜ (recomendada) | Verificación JWT local (más rápida; evita round-trip Auth por request) |
 | `APP_URL` | ⬜ (recomendada) | URL del frontend (enlaces de correo, Referer OpenRouter) |
 | `OPENROUTER_API_KEY` | ⬜ | Proveedor principal de los chatbots |
 | `OPENROUTER_BASE_URL`, `LLM_MODEL_TUTOR`, `LLM_MODEL_DIRECTOR`, `LLM_MODEL_PATH` | ⬜ | Config LLM (tienen default) |
@@ -227,6 +228,7 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 - `API_URL` (Vercel) → URL de Render · `ALLOWED_ORIGINS` y `APP_URL` (Render) → URL de Vercel.
 - `CRON_SECRET` igual en ambos si activas el reporte semanal.
 - Migraciones/seeds: `PASSWORD` (o `DATABASE_URL`) + `SEED_DEMO_PASSWORD`.
+- **Rendimiento prod:** configurar `SUPABASE_JWT_SECRET` en Render; Vercel cron en `/api/health` cada 5 min mantiene la API caliente; considerar plan Starter en Render para evitar cold starts.
 
 ## 9. Confirmación de correo (Brevo)
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button, LoadingState, EmptyState, Input, Label, Select } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
@@ -57,12 +57,17 @@ export default function RiskReportPage() {
     setStudents(Array.isArray(data) ? data : []);
   }, [search, program, riskLevel, minScore, dominantCause]);
 
+  const skipDebounce = useRef(true);
+
   useEffect(() => {
-    const t = setTimeout(() => {
+    if (skipDebounce.current) {
+      skipDebounce.current = false;
       load().finally(() => setInitialLoading(false));
-    }, 300);
+      return;
+    }
+    const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [load]);
+  }, [search, program, riskLevel, minScore, dominantCause, load]);
 
   async function recompute() {
     setLoading(true);

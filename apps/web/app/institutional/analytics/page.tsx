@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LoadingState } from '@/components/ui';
 import { MetricCard } from '@/components/portal/MetricCard';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { StaggerList, StaggerItem } from '@/components/portal/StaggerList';
-import { proxyJson } from '@/lib/proxy';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { LazyBarChart, LazyPieChart } from '@/components/portal/charts/LazyCharts';
+import { useProxyJson } from '@/lib/use-proxy-json';
 
 interface Dashboard {
   kpis: { metric_name: string; metric_value: number; metric_unit?: string; period?: string }[];
@@ -35,13 +34,9 @@ const KPI_LABELS: Record<string, string> = {
 };
 
 export default function AnalyticsPage() {
-  const [data, setData] = useState<Dashboard | null>(null);
+  const { data, error, isLoading } = useProxyJson<Dashboard>('/institutional/analytics/dashboard');
 
-  useEffect(() => {
-    proxyJson<Dashboard>('/institutional/analytics/dashboard').then(setData).catch(() => setData(null));
-  }, []);
-
-  if (!data) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <h1 className="font-display text-2xl font-bold">Analítica institucional</h1>
@@ -49,6 +44,17 @@ export default function AnalyticsPage() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-display text-2xl font-bold">Analítica institucional</h1>
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   const enrollmentTrend = data.charts.enrollment_trend ?? [];
   const engagement = data.charts.engagement ?? [];
@@ -82,14 +88,7 @@ export default function AnalyticsPage() {
         <PortalCard className="min-h-[280px]">
           <p className="mb-4 font-medium">Matriculación y riesgo</p>
           {enrollmentTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={enrollmentTrend}>
-                <XAxis dataKey="label" stroke="#71717a" fontSize={12} />
-                <YAxis stroke="#71717a" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#F28C28" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <LazyBarChart data={enrollmentTrend} height={220} />
           ) : (
             <p className="text-muted text-sm">Sin datos</p>
           )}
@@ -97,16 +96,7 @@ export default function AnalyticsPage() {
         <PortalCard className="min-h-[280px]">
           <p className="mb-4 font-medium">Engagement</p>
           {engagement.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={engagement} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={80} label>
-                  {engagement.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <LazyPieChart data={engagement} colors={COLORS} height={220} />
           ) : (
             <p className="text-muted text-sm">Sin datos</p>
           )}

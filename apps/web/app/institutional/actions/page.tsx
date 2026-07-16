@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LoadingState } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
-import { proxyJson } from '@/lib/proxy';
+import { useProxyJson } from '@/lib/use-proxy-json';
 
 interface Action {
   title: string;
@@ -24,15 +23,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function ActionsPage() {
-  const [actions, setActions] = useState<Action[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    proxyJson<Action[]>('/institutional/actions')
-      .then((data) => setActions(Array.isArray(data) ? data : []))
-      .catch(() => setActions([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, error, isLoading } = useProxyJson<Action[]>('/institutional/actions');
+  const actions = Array.isArray(data) ? data : [];
 
   return (
     <div className="space-y-6">
@@ -41,8 +33,10 @@ export default function ActionsPage() {
         <p className="text-muted">Recomendaciones automáticas para prevenir deserción en UTB</p>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <LoadingState />
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
       ) : actions.length === 0 ? (
         <PortalCard>
           <p className="text-muted">No hay acciones pendientes. El monitoreo está al día.</p>

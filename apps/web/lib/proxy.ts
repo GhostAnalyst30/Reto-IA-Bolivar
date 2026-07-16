@@ -11,6 +11,22 @@ export class ProxyError extends Error {
   }
 }
 
+function mapProxyErrorMessage(status: number, detail?: string): string {
+  if (detail === 'Not Found') {
+    return 'Endpoint no disponible. Verifique que la API esté corriendo y actualizada.';
+  }
+  if (detail === 'Profile not found' || detail?.includes('Perfil no encontrado')) {
+    return 'Perfil no sincronizado. Contacte al administrador o vuelva a iniciar sesión.';
+  }
+  if (status === 403 && detail === 'Ruta no permitida') {
+    return 'No tiene permiso para acceder a este recurso.';
+  }
+  if (status === 503) {
+    return detail || 'Backend no disponible. Intente de nuevo en unos segundos.';
+  }
+  return detail || `Error de API (${status})`;
+}
+
 export async function handleAuthError(status: number) {
   if (status === 401) {
     const supabase = createClient();
@@ -28,7 +44,7 @@ export async function proxyJson<T = unknown>(path: string, options: RequestInit 
     const detail = (data as { detail?: string; error?: string }).detail
       || (data as { error?: string }).error;
     throw new ProxyError(
-      detail || `Error de API (${res.status})`,
+      mapProxyErrorMessage(res.status, detail),
       res.status
     );
   }
@@ -61,9 +77,8 @@ export async function proxyStream(
     const data = await res.json().catch(() => ({}));
     await handleAuthError(res.status);
     throw new ProxyError(
-      (data as { detail?: string; error?: string }).detail
-        || (data as { error?: string }).error
-        || 'Error de stream',
+      mapProxyErrorMessage(res.status, (data as { detail?: string; error?: string }).detail
+        || (data as { error?: string }).error),
       res.status
     );
   }

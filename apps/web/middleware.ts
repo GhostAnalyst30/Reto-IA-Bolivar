@@ -11,9 +11,30 @@ import {
 const PUBLIC_PATHS = ['/', '/login', '/register/student', '/register/institutional', '/register/check-email', '/auth/callback', '/auth/confirm', '/quienes-somos', '/terminos', '/forgot-password', '/reset-password'];
 const AUTH_PATHS = ['/login', '/register/student', '/register/institutional', '/register/check-email', '/pending-approval', '/forgot-password', '/reset-password'];
 
+interface ProfileEntry {
+  role: string;
+  status: string;
+  institution_id?: string | null;
+}
+
+function attachPortalHeaders(
+  request: NextRequest,
+  response: NextResponse,
+  profile: ProfileEntry,
+): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-role', profile.role);
+  requestHeaders.set('x-user-status', profile.status);
+  requestHeaders.set('x-user-institution-id', profile.institution_id ?? '');
+
+  const next = NextResponse.next({ request: { headers: requestHeaders } });
+  response.cookies.getAll().forEach(({ name, value }) => {
+    next.cookies.set(name, value);
+  });
+  return next;
+}
+
 export async function middleware(request: NextRequest) {
-  // API routes handle their own auth (see app/api/proxy). Skipping the Supabase
-  // session validation here removes a network round-trip from every API call.
   if (request.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next({ request: { headers: request.headers } });
   }
@@ -37,14 +58,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
   const path = request.nextUrl.pathname;
 
   if (PUBLIC_PATHS.some(p => path === p || path.startsWith('/api/'))) {
     if (user && AUTH_PATHS.some(p => path.startsWith(p))) {
       let profile = getCachedProfile(user.id);
       if (!profile) {
-        const { data } = await supabase.from('users').select('role, status').eq('id', user.id).single();
+        const { data } = await supabase.from('users').select('role, status, institution_id').eq('id', user.id).single();
         if (data) {
           setCachedProfile(user.id, data);
           profile = getCachedProfile(user.id);
@@ -88,7 +110,7 @@ export async function middleware(request: NextRequest) {
     if (!path.startsWith('/pending-approval')) {
       return NextResponse.redirect(new URL('/pending-approval', request.url));
     }
-    return response;
+    return attachPortalHeaders(request, response, profile);
   }
 
   if (profile.status !== 'approved') {
@@ -144,7 +166,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return response;
+  return attachPortalHeaders(request, response, profile);
 }
 
 export const config = {
