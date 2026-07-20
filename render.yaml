@@ -32,3 +32,7 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      - key: PSYCHOLOGIST_EMAIL
+        value: psicologo@utb.edu.co
+      - key: GUARDRAILS_ENABLED
+        value: "true"

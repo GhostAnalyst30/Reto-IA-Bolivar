@@ -8,20 +8,20 @@ from core.supabase_client import get_supabase
 from core.parallel import run_parallel
 from core.username import is_utb_email
 from core.email_notify import notify_account_approved
+from core.rate_limit import check_rate_limit
 from routes.deps import require_institutional, effective_institution_id, is_platform_admin
-from agents.director_agent import get_director_insights
 from agents.institutional_chat_agent import institutional_chat_reply, parse_chart_from_response
+from services.llm_guardrails import check_input, check_output
 from core.tasks import get_job, run_in_background
 from services.analytics_service import compute_dashboard, invalidate_dashboard
 from services.risk_service import (
     get_latest_risk_by_institution,
     persist_risk_reports,
     compute_student_risk,
-    persist_single_risk_report,
     get_risk_history,
     prune_risk_history,
 )
-from services.recommendation_service import recommend_opportunities
+from services.risk_queue import enqueue_risk_recompute
 
 router = APIRouter(prefix="/institutional", tags=["institutional"])
 logger = logging.getLogger(__name__)
@@ -393,9 +393,15 @@ async def get_student_detail(
     recommended_opportunities = []
     if dominant == "economico" or economic_factors & factor_keys:
         try:
-            recommended_opportunities = recommend_opportunities(
-                student_id, risk_institution, limit=5
+            opps = (
+                sb.table("opportunities")
+                .select("id, title, type, description, external_url, deadline")
+                .eq("institution_id", risk_institution)
+                .eq("is_active", True)
+                .limit(5)
+                .execute()
             )
+            recommended_opportunities = opps.data or []
         except Exception:
             recommended_opportunities = []
 
@@ -547,7 +553,7 @@ async def patch_support_request(
         student_id = existing.data.get("user_id")
         if student_id:
             try:
-                persist_single_risk_report(student_id, inst)
+                enqueue_risk_recompute(student_id, inst, triggered_by="support_status")
             except Exception:
                 pass
 
@@ -634,15 +640,10 @@ async def director_chat(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    dashboard = compute_dashboard({**user, "institution_id": inst})
-    kpis = dashboard["kpis"]
-    try:
-        insights = await get_director_insights(kpis)
-    except Exception as exc:
-        logger.error("Director insights failed: %s", exc)
-        insights = "Lo siento, el servidor no funciona"
-    return {"insights": insights}
+    raise HTTPException(
+        status_code=410,
+        detail="Director IA deshabilitado. Use /institutional/chat o el panel de impacto.",
+    )
 
 
 @router.post("/chat")
@@ -651,12 +652,26 @@ async def institutional_chat(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
+    check_rate_limit(user["id"], "institutional_chat")
+    input_check = check_input(body.message, "institutional", user_id=user["id"])
+    if input_check.action in ("block", "redirect"):
+        return {
+            "text": input_check.user_message or "",
+            "chart": None,
+            "guardrail": input_check.action,
+        }
+
     inst = effective_institution_id(user, institution_id)
     dashboard = compute_dashboard({**user, "institution_id": inst})
     kpis = dashboard.get("kpis") or []
     charts = dashboard.get("charts") or {}
     try:
         raw = await institutional_chat_reply(body.message, body.history, kpis, charts)
+        output_check = check_output(raw, "institutional", user_id=user["id"])
+        if not output_check.allowed and output_check.user_message:
+            raw = output_check.user_message
+        else:
+            raw = output_check.sanitized_text or raw
         text, chart = parse_chart_from_response(raw)
     except Exception as exc:
         logger.error("Institutional chat failed: %s", exc)

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.tasks import prune_old_jobs
-from routes import register, admin_requests, student, institutional, platform_admin, profile, sessions, psychometric, opportunities
+from routes import register, admin_requests, student, institutional, platform_admin, profile, psychometric, counselor, retention, opportunities
 
 
 @asynccontextmanager
@@ -36,9 +36,10 @@ app.include_router(register.router)
 app.include_router(admin_requests.router)
 app.include_router(student.router)
 app.include_router(institutional.router)
+app.include_router(counselor.router)
+app.include_router(retention.router)
 app.include_router(platform_admin.router)
 app.include_router(profile.router)
-app.include_router(sessions.router)
 app.include_router(psychometric.router)
 app.include_router(opportunities.router)
 app.include_router(opportunities.admin_router)

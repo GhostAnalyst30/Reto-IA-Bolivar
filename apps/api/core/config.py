@@ -22,9 +22,17 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     app_url: str = "http://localhost:3000"
     internal_register_key: str = ""
+    psychologist_email: str = "psicologo@utb.edu.co"
+    guardrails_enabled: bool = True
+    chat_max_input_chars: int = 2000
+    chat_max_output_chars: int = 800
+    chat_rate_limit_per_minute: int = 30
+    guardrails_redact_input_pii: bool = True
+    guardrails_block_third_party_pii: bool = True
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

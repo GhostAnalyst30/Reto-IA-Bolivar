@@ -1,6 +1,7 @@
 """Shared dependencies."""
 from fastapi import Depends, HTTPException, Query
 from core.security import get_current_user
+from core.config import settings
 
 PLATFORM_ADMIN = "platform_admin"
 INSTITUTIONAL_ROLES = frozenset({"area_head", "dean", "vice_president", "rector", "admin", PLATFORM_ADMIN})
@@ -57,4 +58,10 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
 async def require_platform_admin(user: dict = Depends(get_current_user)) -> dict:
     if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Platform admin required")
+    return user
+
+
+async def require_counselor(user: dict = Depends(require_approved)) -> dict:
+    if (user.get("email") or "").lower() != settings.psychologist_email.lower():
+        raise HTTPException(status_code=403, detail="Acceso de psicólogo requerido")
     return user

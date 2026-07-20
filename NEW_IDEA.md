@@ -49,13 +49,11 @@ Microservicio de acompañamiento estudiantil de la **Universidad Tecnológica de
 
 Motor de riesgo: reglas ponderadas v1.1 en `apps/api/services/risk_service.py` (no ML en producción). Script offline: `scripts/train_dropout_model.py`.
 
-## Fuera de alcance (diferido)
-
-- Multi-tenant / otras instituciones
-- Orientación vocacional independiente (fusionada en encuesta)
-- Integración ERP (notas/asistencia) — scaffold `academic_records` preparado
-- Modelo predictivo ML en producción (baseline offline disponible)
-- Grafo de oportunidades interactivo
+Fuera de alcance (diferido / recortado del núcleo):
+- Multi-tenant
+- Tutor RAG / path agent / resource scraper / director chat (deshabilitados o eliminados)
+- Integración ERP completa (scaffold `academic_records`)
+- Matching complejo de oportunidades (lista GET simple conservada)
 
 ## Identidad visual
 

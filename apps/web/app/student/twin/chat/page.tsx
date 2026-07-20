@@ -1,27 +1,40 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
 import { BentoCell } from '@/components/ui/BentoGrid';
-import { Send, Plus, MessageSquare, Heart, Loader2, Phone, AlertCircle } from 'lucide-react';
-import { proxyJson, proxyStream } from '@/lib/proxy';
+import { Send, Plus, MessageSquare, Heart, Loader2, Phone, AlertCircle, UserRound } from 'lucide-react';
+import { proxyJson, proxyStream, type HandoffPayload } from '@/lib/proxy';
 
-interface Chat { id: string; title: string; updated_at: string }
-interface Message { id: string; role: string; content: string }
-
-const OFFLINE_COUNSELOR_REPLY =
-  'Hola. Soy **María Fernanda Ortiz** del equipo de bienestar UTB (psicologo.demo@utb.edu.co). '
-  + 'Recibí tu mensaje. Este espacio es confidencial: cuéntame con calma qué te preocupa hoy '
-  + 'y te acompaño paso a paso.\n\n'
-  + '— **Lic. María Fernanda Ortiz**\nPsicóloga · Bienestar estudiantil UTB\n*psicologo.demo@utb.edu.co*';
+interface Chat {
+  id: string;
+  title: string;
+  updated_at: string;
+  handoff_mode?: string;
+}
+interface MessageAuthor {
+  full_name?: string;
+  email?: string;
+}
+interface Message {
+  id: string;
+  role: string;
+  content: string;
+  author?: MessageAuthor;
+}
 interface SelfHelp { id: string; title: string; description?: string; url?: string }
+
+const PSYCHOLOGIST_EMAIL = 'psicologo@utb.edu.co';
 
 export default function TwinChatPage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [handoffMode, setHandoffMode] = useState<'ai' | 'human' | 'resolved'>('ai');
+  const [counselor, setCounselor] = useState<MessageAuthor | null>(null);
+  const [waitingForCounselor, setWaitingForCounselor] = useState(false);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [selfHelp, setSelfHelp] = useState<SelfHelp[]>([]);
@@ -29,12 +42,28 @@ export default function TwinChatPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [supportReason, setSupportReason] = useState('');
   const [error, setError] = useState('');
+  const [privacyNotice, setPrivacyNotice] = useState('');
   const [limitReached, setLimitReached] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadChats(); }, []);
   useEffect(() => { if (activeChat) loadMessages(activeChat); }, [activeChat]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, waitingForCounselor]);
+
+  useEffect(() => {
+    if (handoffMode !== 'human' || !activeChat) return;
+    const t = setInterval(() => { loadMessages(activeChat, true); }, 15000);
+    return () => clearInterval(t);
+  }, [handoffMode, activeChat]);
+
+  const applyHandoff = useCallback((payload: HandoffPayload) => {
+    setHandoffMode('human');
+    setCounselor(payload.counselor);
+    setWaitingForCounselor(true);
+    setChats((prev) => prev.map((c) => (
+      c.id === activeChat ? { ...c, handoff_mode: 'human' } : c
+    )));
+  }, [activeChat]);
 
   async function loadSelfHelpFromConversation(msgs: Message[], latest?: string) {
     try {
@@ -54,6 +83,8 @@ export default function TwinChatPage() {
       setChats(data || []);
       if (data?.[0]) {
         setActiveChat(data[0].id);
+        const mode = (data[0].handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
+        setHandoffMode(mode);
       } else {
         const chat = await proxyJson<Chat>('/chats', {
           method: 'POST',
@@ -61,20 +92,40 @@ export default function TwinChatPage() {
         });
         setChats([chat]);
         setActiveChat(chat.id);
+        setHandoffMode('ai');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar chats');
     }
   }
 
-  async function loadMessages(chatId: string) {
+  async function loadMessages(chatId: string, silent = false) {
     try {
-      const data = await proxyJson<Message[]>(`/chats/${chatId}/messages`);
-      const list = Array.isArray(data) ? data : [];
+      const data = await proxyJson<{ chat?: { handoff_mode?: string }; messages?: Message[] } | Message[]>(
+        `/chats/${chatId}/messages`,
+      );
+      let list: Message[] = [];
+      let mode: 'ai' | 'human' | 'resolved' = 'ai';
+      if (Array.isArray(data)) {
+        list = data;
+      } else {
+        list = data.messages || [];
+        mode = (data.chat?.handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
+        setHandoffMode(mode);
+      }
       setMessages(list);
       setLimitReached(list.filter((m) => m.role === 'user').length >= 15);
-      loadSelfHelpFromConversation(list);
-    } catch { setMessages([]); }
+      const lastCounselor = [...list].reverse().find((m) => m.role === 'counselor');
+      if (lastCounselor?.author) setCounselor(lastCounselor.author);
+      if (mode === 'human') {
+        setWaitingForCounselor(list.length === 0 || list[list.length - 1].role === 'user');
+      } else {
+        setWaitingForCounselor(false);
+      }
+      if (!silent) loadSelfHelpFromConversation(list);
+    } catch {
+      if (!silent) setMessages([]);
+    }
   }
 
   async function newChat() {
@@ -85,12 +136,28 @@ export default function TwinChatPage() {
     setChats((c) => [chat, ...c]);
     setActiveChat(chat.id);
     setMessages([]);
+    setHandoffMode('ai');
+    setCounselor(null);
+    setWaitingForCounselor(false);
     setLimitReached(false);
     setError('');
   }
 
+  async function requestHumanHandoff(reason?: string) {
+    if (!activeChat) return;
+    try {
+      const payload = await proxyJson<HandoffPayload>(`/chats/${activeChat}/handoff`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || 'Prefiero hablar con una persona' }),
+      });
+      applyHandoff(payload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo conectar con bienestar');
+    }
+  }
+
   async function send() {
-    if (!input.trim() || !activeChat || streaming || limitReached) return;
+    if (!input.trim() || !activeChat || streaming || limitReached || handoffMode === 'resolved') return;
     const content = input.trim();
     setInput('');
     const nextMsgs = [...messages, { id: `u-${Date.now()}`, role: 'user', content }];
@@ -98,41 +165,47 @@ export default function TwinChatPage() {
     setStreaming(true);
     setError('');
     let assistant = '';
-    let counselorReply = false;
     try {
-      await proxyStream(`/chats/${activeChat}/messages`, { content }, {
+      const result = await proxyStream(`/chats/${activeChat}/messages`, { content }, {
         onToken: (token) => {
           assistant += token;
-          if (assistant.includes('psicologo.demo@utb.edu.co') || assistant.includes('Bienestar estudiantil UTB')) {
-            counselorReply = true;
-          }
           setMessages((m) => {
             const copy = [...m];
             const last = copy[copy.length - 1];
-            const role = counselorReply ? 'counselor' : 'assistant';
-            if (last?.role === 'assistant' || last?.role === 'counselor') {
-              copy[copy.length - 1] = { ...last, role, content: assistant };
+            if (last?.role === 'assistant') {
+              copy[copy.length - 1] = { ...last, content: assistant };
             } else {
-              copy.push({ id: `a-${Date.now()}`, role, content: assistant });
+              copy.push({ id: `a-${Date.now()}`, role: 'assistant', content: assistant });
             }
             return copy;
           });
         },
+        onHandoffWaiting: (payload) => applyHandoff(payload),
+        onGuardrail: (payload) => {
+          if (payload.privacy_notice) setPrivacyNotice(payload.privacy_notice);
+        },
       });
+      if (result.handoff) applyHandoff(result.handoff);
       const userCount = nextMsgs.filter((m) => m.role === 'user').length;
       if (userCount >= 15) setLimitReached(true);
       loadSelfHelpFromConversation(nextMsgs, content);
-      if (activeChat) loadMessages(activeChat);
+      if (activeChat) loadMessages(activeChat, true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
-      if (msg.includes('409') || msg.toLowerCase().includes('nuevo chat') || msg.toLowerCase().includes('15')) {
-        setLimitReached(true);
-        setError('Has alcanzado el límite de 15 mensajes. Inicia una conversación nueva para continuar.');
+      if (msg.includes('409') || msg.toLowerCase().includes('nuevo chat') || msg.toLowerCase().includes('15') || msg.toLowerCase().includes('cerrada')) {
+        if (msg.toLowerCase().includes('cerrada')) {
+          setHandoffMode('resolved');
+          setError('Esta conversación fue cerrada. Inicia una conversación nueva para continuar.');
+        } else {
+          setLimitReached(true);
+          setError('Has alcanzado el límite de 15 mensajes. Inicia una conversación nueva para continuar.');
+        }
       } else {
-        setMessages((m) => [
-          ...m.filter((x) => x.role !== 'assistant' || x.content !== assistant),
-          { id: `c-${Date.now()}`, role: 'counselor', content: OFFLINE_COUNSELOR_REPLY },
-        ]);
+        try {
+          await requestHumanHandoff('Error de conexión; el estudiante necesita apoyo humano');
+        } catch {
+          setError('No se pudo enviar el mensaje. Intenta de nuevo.');
+        }
       }
     }
     setStreaming(false);
@@ -148,15 +221,46 @@ export default function TwinChatPage() {
       method: 'POST',
       body: JSON.stringify({ chat_id: activeChat, reason: supportReason || 'Solicitud de apoyo psicológico' }),
     });
+    applyHandoff({
+      handoff_mode: 'human',
+      counselor: counselor || { full_name: 'Equipo de bienestar UTB', email: PSYCHOLOGIST_EMAIL },
+    });
     setShowSupport(false);
     setSupportReason('');
-    alert('Tu solicitud fue registrada. El equipo de bienestar UTB te contactará pronto.');
   }
+
+  const counselorLabel = counselor?.full_name || 'Equipo de bienestar UTB';
+  const counselorEmail = counselor?.email || PSYCHOLOGIST_EMAIL;
+  const chatClosed = handoffMode === 'resolved';
 
   return (
     <div className="space-y-4">
       <PrivacyBanner />
-      {limitReached && (
+      {privacyNotice && (
+        <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm">
+          {privacyNotice}
+        </div>
+      )}
+      {handoffMode === 'human' && (
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4">
+          <UserRound className="h-5 w-5 text-emerald-500 shrink-0" />
+          <div className="flex-1 text-sm">
+            <p className="font-medium">Estás conversando con Bienestar UTB</p>
+            <p className="text-xs text-muted">{counselorLabel} · {counselorEmail}</p>
+          </div>
+        </div>
+      )}
+      {chatClosed && (
+        <div className="flex items-center gap-3 rounded-lg border border-zinc-500/40 bg-zinc-500/10 p-4">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Conversación cerrada por bienestar</p>
+            <p className="text-xs text-muted">Inicia un chat nuevo si necesitas seguir conversando.</p>
+          </div>
+          <Button size="sm" onClick={newChat}><Plus className="h-4 w-4 mr-1" />Nuevo chat</Button>
+        </div>
+      )}
+      {limitReached && !chatClosed && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
           <div className="flex-1">
@@ -175,12 +279,19 @@ export default function TwinChatPage() {
             <button
               key={c.id}
               type="button"
-              onClick={() => setActiveChat(c.id)}
+              onClick={() => {
+                setActiveChat(c.id);
+                setHandoffMode((c.handoff_mode || 'ai') as 'ai' | 'human' | 'resolved');
+              }}
               className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
                 activeChat === c.id ? 'bg-brand-amber/10 text-brand-amber' : 'hover:bg-brand-bg'
               }`}
             >
-              <MessageSquare className="h-4 w-4 shrink-0" /> {c.title}
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              <span className="truncate">{c.title}</span>
+              {c.handoff_mode === 'human' && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-emerald-500 shrink-0" title="Con psicólogo" />
+              )}
             </button>
           ))}
         </aside>
@@ -204,7 +315,7 @@ export default function TwinChatPage() {
                 }`}>
                   {m.role === 'counselor' && (
                     <p className="mb-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                      Bienestar UTB · psicologo.demo@utb.edu.co
+                      {m.author?.full_name || counselorLabel} · {m.author?.email || counselorEmail}
                     </p>
                   )}
                   {m.role === 'assistant' || m.role === 'counselor' ? (
@@ -215,6 +326,13 @@ export default function TwinChatPage() {
                 </div>
               </div>
             ))}
+            {waitingForCounselor && handoffMode === 'human' && !streaming && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-muted">
+                  Mensaje enviado. Un psicólogo te responderá aquí mismo en este chat.
+                </div>
+              </div>
+            )}
             {streaming && <Loader2 className="h-5 w-5 animate-spin text-brand-amber" />}
             <div ref={bottomRef} />
           </div>
@@ -228,10 +346,21 @@ export default function TwinChatPage() {
               ))}
             </div>
             <div className="flex gap-2">
-              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe aquí..." onKeyDown={(e) => e.key === 'Enter' && send()} disabled={limitReached} />
-              <Button onClick={send} disabled={streaming || limitReached}><Send className="h-4 w-4" /></Button>
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={handoffMode === 'human' ? 'Escribe al psicólogo…' : 'Escribe aquí…'}
+                onKeyDown={(e) => e.key === 'Enter' && send()}
+                disabled={limitReached || chatClosed}
+              />
+              <Button onClick={send} disabled={streaming || limitReached || chatClosed}><Send className="h-4 w-4" /></Button>
             </div>
-            <Button variant="secondary" size="sm" onClick={() => setShowSupport(true)} className="w-full">
+            {handoffMode === 'ai' && (
+              <Button variant="secondary" size="sm" onClick={() => requestHumanHandoff()} className="w-full">
+                <UserRound className="h-4 w-4 mr-2" /> Prefiero hablar con una persona
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => setShowSupport(true)} className="w-full" disabled={chatClosed}>
               <Phone className="h-4 w-4 mr-2" /> Solicitar apoyo humano
             </Button>
           </div>
@@ -264,10 +393,10 @@ export default function TwinChatPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <Card className="w-full max-w-md space-y-4">
             <h3 className="font-semibold">Solicitar apoyo humano</h3>
-            <PrivacyBanner message="Con tu consentimiento, compartiremos un resumen con el equipo de bienestar UTB." />
+            <PrivacyBanner message="Con tu consentimiento, un psicólogo de bienestar UTB te responderá en este mismo chat." />
             <Input value={supportReason} onChange={(e) => setSupportReason(e.target.value)} placeholder="Motivo (opcional)" />
             <div className="flex gap-2">
-              <Button onClick={requestSupport}>Enviar solicitud</Button>
+              <Button onClick={requestSupport}>Conectar con psicólogo</Button>
               <Button variant="secondary" onClick={() => setShowSupport(false)}>Cancelar</Button>
             </div>
           </Card>

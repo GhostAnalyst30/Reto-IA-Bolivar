@@ -41,6 +41,12 @@ export const ROLE_LABELS: Record<string, string> = {
   platform_admin: 'Administrador de plataforma',
 };
 
+export const PSYCHOLOGIST_EMAIL = 'psicologo@utb.edu.co';
+
+export function isCounselorEmail(email: string | null | undefined): boolean {
+  return (email || '').toLowerCase() === PSYCHOLOGIST_EMAIL.toLowerCase();
+}
+
 export function isPlatformAdmin(role: string): boolean {
   return role === PLATFORM_ADMIN_ROLE;
 }
@@ -62,6 +68,7 @@ export const PLATFORM_FULL_NAV: NavEntry[] = [
     ],
   },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/care-queue', label: 'CareQueue' },
   { href: '/institutional/analytics', label: 'Analítica' },
   { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/actions', label: 'Acciones' },
@@ -86,6 +93,7 @@ export const DIRECTIVO_NAV: NavEntry[] = [
   { href: '/institutional/analytics', label: 'Analítica' },
   { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/care-queue', label: 'CareQueue', counselorOnly: true },
   { href: '/institutional/actions', label: 'Acciones' },
   { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
   { href: '/institutional/chat', label: 'Chat institucional' },
@@ -97,6 +105,7 @@ export const ADMIN_INSTITUTIONAL_NAV: NavEntry[] = [
   { href: '/institutional/analytics', label: 'Analítica' },
   { href: '/institutional/prediction', label: 'Predicción' },
   { href: '/institutional/risk', label: 'Riesgo de deserción' },
+  { href: '/institutional/care-queue', label: 'CareQueue', counselorOnly: true },
   { href: '/institutional/actions', label: 'Acciones' },
   { href: '/institutional/executive-summary', label: 'Resumen ejecutivo' },
   { href: '/institutional/chat', label: 'Chat institucional' },
@@ -120,6 +129,7 @@ export const ADMIN_INSTITUTIONAL_NAV: NavEntry[] = [
   { href: '/institutional/admin/programs', label: 'Programas académicos', adminOnly: true },
   { href: '/institutional/admin/requests', label: 'Solicitudes', adminOnly: true },
   { href: '/institutional/admin/support-requests', label: 'Apoyo humano', adminOnly: true },
+  { href: '/institutional/counselor/inbox', label: 'Inbox bienestar', counselorOnly: true },
   { href: '/institutional/admin/academic-outcomes', label: 'Estados académicos', adminOnly: true },
   { href: '/institutional/admin/auth-keys', label: 'Claves de rol', adminOnly: true },
   { href: '/institutional/admin/security', label: 'Seguridad', adminOnly: true },

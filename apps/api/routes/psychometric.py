@@ -115,8 +115,8 @@ async def submit_assessment(body: SubmitPsychometric, user: dict = Depends(requi
     questions_cache.invalidate(user["id"])
 
     try:
-        from services.risk_service import persist_single_risk_report
-        persist_single_risk_report(user["id"], inst)
+        from services.risk_queue import enqueue_risk_recompute
+        enqueue_risk_recompute(user["id"], inst, triggered_by="psychometric")
     except Exception:
         pass
 

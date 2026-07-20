@@ -63,7 +63,7 @@ UPDATE public.users SET
   status = 'approved',
   institution_id = 'a0000000-0000-4000-8000-000000000001',
   full_name = 'Lic. María Fernanda Ortiz'
-WHERE email = 'psicologo.demo@utb.edu.co';
+WHERE email = 'psicologo@utb.edu.co';
 
 UPDATE public.users SET
   role = 'student',

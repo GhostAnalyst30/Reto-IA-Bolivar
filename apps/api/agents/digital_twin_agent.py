@@ -2,7 +2,6 @@
 import asyncio
 
 from core.supabase_client import get_supabase
-from agents.search_agent import search_resources
 
 TWIN_CHAT_SYSTEM = """Eres el Digital Twin de acompañamiento de la UTB (Universidad Tecnológica de Bolívar).
 Ofreces un espacio seguro, confidencial y empático para estudiantes universitarios.
@@ -23,11 +22,27 @@ Directrices de discreción y seguridad:
   redirige la conversación con discreción y respeto hacia temas académicos o de bienestar, sin sermonear
 - Nunca generes contenido violento, sexual, ilegal ni discriminatorio
 - No compartas información de otras personas ni datos sensibles
+- Nunca repitas, infieras ni solicites documentos de identidad, teléfonos, direcciones o correos
+- Invita al estudiante a no pegar datos personales en el chat; este espacio no reemplaza trámites formales
 
 Directrices de formato:
 - Responde SIEMPRE en Markdown limpio: párrafos cortos, listas con "-", negrita con **texto**
 - No uses símbolos extraños, ni encabezados excesivos, ni emojis
 - Sé corto y conciso: máximo 120 palabras por respuesta, salvo que pidan detalle explícitamente"""
+
+
+def _local_wellbeing_resources(sb, institution_id: str | None, query: str) -> list[dict]:
+    q = sb.table("resources").select("id, title, description, topic, url").limit(40)
+    if institution_id:
+        q = q.eq("institution_id", institution_id)
+    rows = q.execute().data or []
+    needle = (query or "bienestar").lower()
+    scored = []
+    for r in rows:
+        blob = f"{r.get('title','')} {r.get('topic','')} {r.get('description','')}".lower()
+        if any(tok in blob for tok in needle.split()[:4]) or "bienestar" in blob or "estres" in blob:
+            scored.append(r)
+    return (scored or rows)[:5]
 
 
 async def build_digital_twin_messages(
@@ -43,18 +58,22 @@ async def build_digital_twin_messages(
     def fetch_profile():
         return sb.table("student_profiles").select("*").eq("user_id", user_id).limit(1).execute()
 
-    twin_task = asyncio.to_thread(fetch_twin)
-    profile_task = asyncio.to_thread(fetch_profile)
-    # Recursos de autoayuda según el tema de la conversación actual
-    topic_query = f"{new_message[:120]} bienestar autoayuda" if new_message else "bienestar estrés ansiedad autoayuda"
-    resources_task = search_resources(topic_query)
+    def fetch_user():
+        return sb.table("users").select("institution_id").eq("id", user_id).limit(1).execute()
 
-    twin, profile, wellbeing_resources = await asyncio.gather(
-        twin_task, profile_task, resources_task
+    twin, profile, user_row = await asyncio.gather(
+        asyncio.to_thread(fetch_twin),
+        asyncio.to_thread(fetch_profile),
+        asyncio.to_thread(fetch_user),
     )
 
     twin_data = twin.data[0] if twin.data else {}
     profile_data = profile.data[0] if profile.data else {}
+    institution_id = (user_row.data[0].get("institution_id") if user_row.data else None)
+    topic_query = f"{new_message[:80]} bienestar" if new_message else "bienestar estrés ansiedad"
+    wellbeing_resources = await asyncio.to_thread(
+        _local_wellbeing_resources, sb, institution_id, topic_query
+    )
     resource_lines = [f"- {r['title']}: {r.get('description', '')[:120]}" for r in wellbeing_resources[:5]]
 
     context = f"""
@@ -77,5 +96,4 @@ Perfil Digital Twin:
             messages.append({"role": role, "content": msg["content"]})
     if not history or history[-1].get("content") != new_message:
         messages.append({"role": "user", "content": new_message})
-
-    return messages, wellbeing_resources[:3]
+    return messages, wellbeing_resources

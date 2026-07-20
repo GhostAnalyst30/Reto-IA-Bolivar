@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from routes.deps import require_student, require_institutional, effective_institution_id
-from services.recommendation_service import recommend_opportunities
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
 admin_router = APIRouter(prefix="/opportunities/admin", tags=["opportunities-admin"])
@@ -56,10 +55,8 @@ async def list_opportunities(
 
 @router.get("/recommended")
 async def recommended(user: dict = Depends(require_student)):
-    inst = user.get("institution_id")
-    if not inst:
-        return []
-    return recommend_opportunities(user["id"], inst)
+    """Lista simple (sin motor de matching)."""
+    return await list_opportunities(user)
 
 
 @router.get("/{opp_id}")

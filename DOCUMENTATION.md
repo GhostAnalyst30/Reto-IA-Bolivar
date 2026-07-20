@@ -25,6 +25,10 @@ Ejecutar **en orden**:
 | 9 | `supabase/011_align_metrics.sql` | Alinear `active_7d` con Digital Twin |
 | 10 | `supabase/012_dropout_enhancements.sql` | Apoyo humano RLS, outcomes, `academic_records`, pruning |
 | 11 | `supabase/013_platform_dashboard_roles.sql` | RPC dashboard con desglose por rol/institución |
+| 12 | `supabase/014_messages_counselor_role.sql` | Rol `counselor` en mensajes del chat |
+| 13 | `supabase/015_chat_human_handoff.sql` | Handoff humano (`handoff_mode`, `author_id`) |
+| 14 | `supabase/016_chat_performance_indexes.sql` | Índices compuestos chat / riesgo / psicometría |
+| 15 | `supabase/017_retention_os.sql` | Sentinel, CareQueue, ActionPlan, Outreach, cola de riesgo |
 
 Los pasos 1–4 también se aplican con `python scripts/run_migrations.py --reset`. Los parches 009–013 con `python scripts/run_migrations.py --patch ID`.
 
@@ -47,7 +51,11 @@ Ejecuta `seed-utb-users.ts` **antes** de `--demo`: los `UPDATE` de `005_seed_dem
 
 **Estudiante:** `/student/onboarding/survey` → `/student/twin/summary`, `/student/twin/chat`, `/student/opportunities`, `/student/resources`, `/student/paths`, `/student/progress`, `/student/profile`. La encuesta psicométrica es obligatoria antes de acceder al Digital Twin.
 
-**Institucional:** `/institutional/dashboard`, `/institutional/analytics`, `/institutional/prediction`, `/institutional/actions`, `/institutional/risk`, `/institutional/students/[id]`, `/institutional/executive-summary`, `/institutional/chat`, `/institutional/admin` (solicitudes, apoyo humano, estados académicos, programas, claves).
+**Handoff humano (Digital Twin):** si el LLM falla, el estudiante pide apoyo o elige «Prefiero hablar con una persona», el chat pasa a modo humano (`handoff_mode=human`). El psicólogo real (`psicologo@utb.edu.co`) responde en el mismo hilo desde `/institutional/counselor/inbox`. No se generan respuestas automáticas simuladas.
+
+**Retention OS (anti-deserción):** Sentinel (cron `/api/cron/sentinel`), CareQueue (`/institutional/care-queue`), ActionPlan, Outreach Brevo (`/api/cron/outreach`), DropoutPredict + impacto en `/institutional/prediction`.
+
+**Institucional:** `/institutional/dashboard`, `/institutional/analytics`, `/institutional/prediction`, `/institutional/actions`, `/institutional/risk`, `/institutional/students/[id]`, `/institutional/executive-summary`, `/institutional/chat`, `/institutional/counselor/inbox` (psicólogo), `/institutional/admin` (solicitudes, apoyo humano, estados académicos, programas, claves).
 
 > Login por **correo institucional + contraseña** (no username).
 
@@ -219,6 +227,13 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 | `OPENROUTER_API_KEY` | ⬜ | Proveedor principal de los chatbots |
 | `OPENROUTER_BASE_URL`, `LLM_MODEL_TUTOR`, `LLM_MODEL_DIRECTOR`, `LLM_MODEL_PATH` | ⬜ | Config LLM (tienen default) |
 | `GEMINI_API_KEY`, `HUGGINGFACE_API_KEY`, `LITELLM_API_BASE`, `LITELLM_API_KEY` | ⬜ | Proveedores LLM de fallback |
+| `PSYCHOLOGIST_EMAIL` | ⬜ (default `psicologo@utb.edu.co`) | Cuenta del psicólogo para handoff humano en chat |
+| `GUARDRAILS_ENABLED` | ⬜ (default `true`) | Activa validación de entrada/salida en chats LLM |
+| `CHAT_MAX_INPUT_CHARS` | ⬜ (default `2000`) | Límite de caracteres por mensaje del usuario |
+| `CHAT_MAX_OUTPUT_CHARS` | ⬜ (default `800`) | Truncado de respuestas LLM |
+| `CHAT_RATE_LIMIT_PER_MINUTE` | ⬜ (default `30`) | Rate limit por usuario en chats |
+| `GUARDRAILS_REDACT_INPUT_PII` | ⬜ (default `true`) | Redacta PII en input antes del LLM |
+| `GUARDRAILS_BLOCK_THIRD_PARTY_PII` | ⬜ (default `true`) | Bloquea PII de terceros y solicitudes de datos personales |
 | `SCRAPER_ENABLED`, `YOUTUBE_API_KEY` | ⬜ | Scraper de recursos externos |
 | `CRON_SECRET` | ⬜ | Debe coincidir con Vercel; protege cron de riesgo y reportes |
 
@@ -230,7 +245,42 @@ Todos los roles pueden editar nombre y cambiar contraseña en **Mi perfil**.
 - Migraciones/seeds: `PASSWORD` (o `DATABASE_URL`) + `SEED_DEMO_PASSWORD`.
 - **Rendimiento prod:** configurar `SUPABASE_JWT_SECRET` en Render; Vercel cron en `/api/health` cada 5 min mantiene la API caliente; considerar plan Starter en Render para evitar cold starts.
 
-## 9. Confirmación de correo (Brevo)
+### 8.4 Checklist chats en producción (Vercel + Render + Supabase)
+
+Sin esto, Digital Twin / institucional / counselor fallan o escalan a humano vacío:
+
+1. En Supabase: migraciones `014`, `015`, `016` aplicadas.
+2. Usuario `psicologo@utb.edu.co` existe y está `approved` (`SEED_DEMO_PASSWORD=... pnpm --filter @reto/web exec tsx ../../scripts/seed-utb-users.ts`).
+3. Vercel: `API_URL=https://reto-ia-bolivar.onrender.com` (sin slash final).
+4. Render: `OPENROUTER_API_KEY` (o Gemini), `SUPABASE_*`, `ALLOWED_ORIGINS=https://reto-ia-bolivar.vercel.app`, `APP_URL`, `PSYCHOLOGIST_EMAIL`.
+5. Proxy SSE: `maxDuration = 60` en `apps/web/app/api/proxy/route.ts` (ya en repo).
+6. Smoke test: twin stream, chat institucional JSON, reply del counselor + poll del estudiante.
+
+| Chat | Ruta UI | Backend |
+|------|---------|---------|
+| Digital Twin (SSE) | `/student/twin/chat` | `POST /chats/{id}/messages` |
+| Institucional (JSON) | `/institutional/chat` | `POST /institutional/chat` |
+| Counselor inbox | `/institutional/counselor/inbox` | `/institutional/counselor/*` |
+
+## 9. Guardrails LLM y privacidad
+
+Los chats del Digital Twin (`/student/twin/chat`) y el chat institucional (`/institutional/chat`) pasan por [`apps/api/services/llm_guardrails.py`](apps/api/services/llm_guardrails.py).
+
+**Entrada:** longitud máxima, anti prompt-injection, detección de crisis (handoff automático al psicólogo), bloqueo off-topic, redacción/bloqueo de PII.
+
+**Salida:** eliminación de `<thinking>`, truncado, redacción de emails/teléfonos/cédulas, bloqueo de datos individuales de estudiantes en chat institucional.
+
+**Rate limit:** 30 mensajes/min por usuario (HTTP 429).
+
+**Frontend:** [`MarkdownMessage`](apps/web/components/ui/MarkdownMessage.tsx) sanitiza HTML con DOMPurify.
+
+**Eventos de seguridad:** `injection_attempt`, `pii_exposure_attempt`, `guardrail_crisis`, `rate_limit_exceeded` en `security_events` (sin valores PII en `details`).
+
+**Consentimiento twin:** alineado con `twin_consent` y [`PrivacyBanner`](apps/web/components/ui/PrivacyBanner.tsx).
+
+Tests: `python -m unittest tests.test_llm_guardrails` desde `apps/api`.
+
+## 10. Confirmación de correo (Brevo)
 
 El registro usa BFF + Brevo con página `/auth/confirm` (clic explícito, resiste escáneres de correo). Configurar en Supabase → Authentication → URL Configuration:
 

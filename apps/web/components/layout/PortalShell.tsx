@@ -21,6 +21,7 @@ interface PortalShellProps {
   learningNav?: NavItem[];
   children: React.ReactNode;
   isAdmin?: boolean;
+  isCounselor?: boolean;
   role?: string;
   portal?: PortalType;
 }
@@ -30,6 +31,7 @@ export function PortalShell({
   learningNav,
   children,
   isAdmin,
+  isCounselor,
   role = 'student',
   portal = 'student',
 }: PortalShellProps) {
@@ -45,7 +47,7 @@ export function PortalShell({
     finishTransition();
   }, [finishTransition]);
 
-  const filteredNav = filterNavEntries(nav, !!isAdmin);
+  const filteredNav = filterNavEntries(nav, !!isAdmin, !!isCounselor);
   const filteredLearning = (learningNav || []).filter((n) => !n.adminOnly || isAdmin);
 
   async function logout() {
@@ -174,9 +176,8 @@ export const STUDENT_NAV: NavItem[] = [
 ];
 
 export const STUDENT_NAV_LEARNING: NavItem[] = [
-  { href: '/student/paths', label: 'Rutas de aprendizaje' },
-  { href: '/student/learning/search', label: 'Buscador académico' },
   { href: '/student/programs', label: 'Programas' },
+  { href: '/student/progress', label: 'Mi progreso' },
 ];
 
 /** @deprecated use getInstitutionalNav from utils */

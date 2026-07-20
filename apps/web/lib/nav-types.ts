@@ -2,11 +2,13 @@ export interface NavItem {
   href: string;
   label: string;
   adminOnly?: boolean;
+  counselorOnly?: boolean;
 }
 
 export interface NavGroup {
   label: string;
   adminOnly?: boolean;
+  counselorOnly?: boolean;
   items: NavItem[];
 }
 

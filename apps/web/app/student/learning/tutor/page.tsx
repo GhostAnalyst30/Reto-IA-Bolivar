@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
-export default function TutorRedirect() {
-  redirect('/student/paths');
+export default function TutorRedirectPage() {
+  redirect('/student/twin/chat');
 }

@@ -281,3 +281,39 @@ export async function sendPasswordChangeEmail(params: { to: string; fullName: st
     devLog: `Contraseña actualizada: ${params.to}`,
   });
 }
+
+export async function sendOutreachEmail(params: {
+  to: string;
+  fullName: string;
+  subject: string;
+  bodyIntro: string;
+  ctaUrl: string;
+  causeHint?: string;
+}) {
+  const appUrl = getAppUrl();
+  const causeLine = params.causeHint
+    ? `<p style="font-size:13px;color:#555;">Motivo de acompañamiento: <strong>${params.causeHint}</strong></p>`
+    : '';
+  const html = `
+    <div style="font-family: 'DM Sans', system-ui, sans-serif; max-width: 520px; margin: 0 auto; color: #000;">
+      <h1 style="color: #003A70; font-family: Georgia, serif;">UTB Te acompaña</h1>
+      <p>Hola <strong>${params.fullName}</strong>,</p>
+      <p>${params.bodyIntro}</p>
+      ${causeLine}
+      <p style="margin: 28px 0;">
+        <a href="${params.ctaUrl}"
+           style="background: #F28C28; color: #FFFFFF; padding: 14px 28px; border-radius: 2px; text-decoration: none; font-weight: 600; display: inline-block;">
+          Abrir acompañamiento
+        </a>
+      </p>
+      <p style="font-size: 12px; color: #666;">UTB Te acompaña · ${appUrl}</p>
+    </div>
+  `;
+  return deliverEmail({
+    to: params.to,
+    subject: params.subject,
+    html,
+    devLog: `Outreach → ${params.to}`,
+    link: params.ctaUrl,
+  });
+}

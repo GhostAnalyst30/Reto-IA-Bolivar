@@ -349,18 +349,8 @@ async def admin_delete_program(program_id: str, admin: dict = Depends(require_ad
 
 
 @router.post("/scraper/run")
-async def run_scraper(
-    admin: dict = Depends(require_admin),
-    institution_id: str | None = Query(None),
-    target: str = Query("general", description="general | utb_biblioteca"),
-):
-    from services.resource_scraper import search_external, scrape_utb_biblioteca
-    inst = effective_institution_id(admin, institution_id)
-    if target == "utb_biblioteca":
-        results = await scrape_utb_biblioteca(inst)
-    else:
-        results = await search_external("programación python", inst)
-    return {"indexed": len(results), "target": target}
+async def run_scraper(admin: dict = Depends(require_admin)):
+    raise HTTPException(status_code=410, detail="Scraper deshabilitado: fuera del núcleo anti-deserción")
 
 
 @router.get("/resources")
@@ -468,3 +458,58 @@ async def cron_prune_risk(
         raise HTTPException(status_code=401, detail="No autorizado")
     deleted = prune_risk_history(UTB_INSTITUTION_ID, keep_days=keep_days)
     return {"pruned": deleted, "institution_id": UTB_INSTITUTION_ID}
+
+
+@router.post("/cron/sentinel")
+async def cron_sentinel(
+    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
+):
+    from core.config import settings
+    from services.risk_queue import process_risk_recompute_queue
+    from services.sentinel_service import run_sentinel
+    from services.care_queue import sync_high_risk_into_queue
+
+    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    queue_result = process_risk_recompute_queue(UTB_INSTITUTION_ID)
+    sync_high_risk_into_queue(UTB_INSTITUTION_ID)
+    sentinel = run_sentinel(UTB_INSTITUTION_ID)
+    return {
+        "institution_id": UTB_INSTITUTION_ID,
+        "risk_queue": queue_result,
+        "sentinel": sentinel,
+    }
+
+
+@router.get("/cron/outreach-targets")
+async def cron_outreach_targets(
+    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
+):
+    from core.config import settings
+    from services.outreach_service import build_outreach_targets
+
+    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return build_outreach_targets(UTB_INSTITUTION_ID)
+
+
+@router.post("/cron/outreach-log")
+async def cron_outreach_log(
+    body: dict,
+    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
+):
+    from core.config import settings
+    from services.outreach_service import log_outreach
+
+    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    log_outreach(
+        institution_id=body.get("institution_id") or UTB_INSTITUTION_ID,
+        user_id=body["user_id"],
+        segment=body["segment"],
+        subject=body.get("subject") or "",
+        status=body.get("status") or "sent",
+        brevo_id=body.get("brevo_id"),
+    )
+    return {"ok": True}

@@ -51,17 +51,24 @@ export async function proxyJson<T = unknown>(path: string, options: RequestInit 
   return data as T;
 }
 
+export interface HandoffPayload {
+  handoff_mode: string;
+  counselor: { id?: string; full_name: string; email: string };
+}
+
 export interface StreamCallbacks {
   onThinking?: (message: string) => void;
   onReasoning?: (content: string) => void;
   onToken?: (token: string) => void;
+  onHandoffWaiting?: (payload: HandoffPayload) => void;
+  onGuardrail?: (payload: { action?: string; privacy_notice?: string; flags?: string[] }) => void;
 }
 
 export async function proxyStream(
   path: string,
   body: object,
   callbacks: StreamCallbacks | ((token: string) => void),
-): Promise<string> {
+): Promise<{ content: string; handoff?: HandoffPayload }> {
   const cb: StreamCallbacks = typeof callbacks === 'function'
     ? { onToken: callbacks }
     : callbacks;
@@ -90,6 +97,7 @@ export async function proxyStream(
   let buffer = '';
   let full = '';
   let currentEvent = 'message';
+  let handoff: HandoffPayload | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -109,6 +117,14 @@ export async function proxyStream(
           cb.onThinking?.(parsed.message);
         } else if (currentEvent === 'reasoning' && parsed.content) {
           cb.onReasoning?.(parsed.content);
+        } else if (currentEvent === 'handoff_waiting' && parsed.counselor) {
+          handoff = parsed as HandoffPayload;
+          cb.onHandoffWaiting?.(handoff);
+        } else if (currentEvent === 'guardrail') {
+          cb.onGuardrail?.(parsed);
+        } else if (currentEvent === 'done' && parsed.counselor && parsed.handoff_mode) {
+          handoff = parsed as HandoffPayload;
+          cb.onHandoffWaiting?.(handoff);
         } else if (parsed.token) {
           full += parsed.token;
           cb.onToken?.(parsed.token);
@@ -118,5 +134,5 @@ export async function proxyStream(
       }
     }
   }
-  return full;
+  return { content: full, handoff };
 }

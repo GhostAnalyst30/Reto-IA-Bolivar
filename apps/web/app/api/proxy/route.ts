@@ -4,6 +4,13 @@ import { API_URL } from '@/lib/api';
 import { isPathAllowed } from '@/lib/proxy-allowlist';
 
 export const runtime = 'nodejs';
+/** LLM + SSE del twin puede superar el default ~10s de Vercel Hobby. */
+export const maxDuration = 60;
+
+/** Solo el Digital Twin hace SSE en POST /chats/{id}/messages (no counselor). */
+function isStudentChatSse(path: string): boolean {
+  return /^\/chats\/[^/]+\/messages\/?$/.test(path);
+}
 
 interface AuthContext {
   token?: string;
@@ -85,24 +92,31 @@ export async function POST(request: NextRequest) {
 
   const body = await request.text();
 
-  if (auth.path.includes('/messages')) {
-    const res = await fetch(`${API_URL}${auth.path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders(auth.token) },
-      body,
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ detail: 'Stream error' }));
-      return NextResponse.json(data, { status: res.status });
+  if (isStudentChatSse(auth.path)) {
+    try {
+      const res = await fetch(`${API_URL}${auth.path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(auth.token) },
+        body,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: 'Stream error' }));
+        return NextResponse.json(data, { status: res.status });
+      }
+      return new NextResponse(res.body, {
+        status: res.status,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      });
+    } catch {
+      return NextResponse.json(
+        { detail: 'Backend no disponible. Intente de nuevo en unos segundos.' },
+        { status: 503 },
+      );
     }
-    return new NextResponse(res.body, {
-      status: res.status,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
   }
 
   return forward('POST', auth.path, auth.token, body);

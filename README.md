@@ -1,5 +1,9 @@
 # UTB Te acompaña — Plataforma de acompañamiento estudiantil
 
+> **Desarrolladores de UTB Te Acompaña**
+> Emmanuel Ascendra Perez
+> Susana Rosales (Diseño Frontend)
+
 Microservicio exclusivo de la **Universidad Tecnológica de Bolívar (UTB)** con portal estudiante (Digital Twin, oportunidades, recursos, aprendizaje) y suite institucional (analítica, predicción, riesgo de deserción, administración). Registro con `@utb.edu.co`, login por **correo + contraseña**, `auth_key` para directivos.
 
 > **Alcance UTB-only:** la plataforma opera para una sola institución (UTB). No se crean ni gestionan otras universidades.

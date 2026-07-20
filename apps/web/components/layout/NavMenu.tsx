@@ -97,12 +97,21 @@ export function NavMenu({ entries, pathname, onNavigate }: NavMenuProps) {
   );
 }
 
-export function filterNavEntries(entries: NavEntry[], isAdmin: boolean): NavEntry[] {
+export function filterNavEntries(
+  entries: NavEntry[],
+  isAdmin: boolean,
+  isCounselor = false,
+): NavEntry[] {
+  const visible = (e: { adminOnly?: boolean; counselorOnly?: boolean }) => {
+    if (e.counselorOnly) return isCounselor;
+    if (e.adminOnly) return isAdmin;
+    return true;
+  };
   return entries
-    .filter((e) => !e.adminOnly || isAdmin)
+    .filter((e) => visible(e))
     .map((e) => {
       if (isNavGroup(e)) {
-        const items = e.items.filter((i) => !i.adminOnly || isAdmin);
+        const items = e.items.filter((i) => visible(i));
         if (items.length === 0) return null;
         return { ...e, items };
       }

@@ -129,6 +129,8 @@ async def complete_with_fallback(
     *,
     skip_thinking: bool = False,
     fallback: Callable[[], str] | None = None,
+    chat_type: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[str, str, str]:
     """Returns (reasoning, answer, provider_used). On total failure uses fallback or FALLBACK_MESSAGE."""
     model = model or settings.llm_model_tutor
@@ -141,8 +143,8 @@ async def complete_with_fallback(
 
     providers: list[tuple[str, Callable[[], Awaitable[str]]]] = []
     if settings.openrouter_api_key:
-        for _ in range(3):
-            providers.append(("openrouter", lambda m=enriched, mod=model: _openrouter_complete(m, mod)))
+        # Un solo slot OpenRouter; reintento controlado abajo (no 3 fallos idénticos).
+        providers.append(("openrouter", lambda m=enriched, mod=model: _openrouter_complete(m, mod)))
     if settings.gemini_api_key:
         providers.append(("gemini", lambda m=enriched: _gemini_complete(m)))
     if settings.huggingface_api_key:
@@ -157,15 +159,26 @@ async def complete_with_fallback(
         return "", demo, "demo"
 
     for name, fn in providers:
-        try:
-            raw = await fn()
-            reasoning, answer = _parse_thinking(raw)
-            if answer:
-                return reasoning, answer, name
-            logger.warning("LLM provider %s returned an empty answer", name)
-        except Exception as exc:
-            logger.warning("LLM provider %s failed: %s", name, exc)
-            await asyncio.sleep(0.5)
+        attempts = 2 if name == "openrouter" else 1
+        for attempt in range(attempts):
+            try:
+                raw = await fn()
+                reasoning, answer = _parse_thinking(raw)
+                if answer:
+                    if settings.guardrails_enabled and chat_type:
+                        from services.llm_guardrails import check_output
+                        out = check_output(answer, chat_type, user_id=user_id)  # type: ignore[arg-type]
+                        if not out.allowed and out.user_message:
+                            answer = out.user_message
+                        elif out.sanitized_text:
+                            answer = out.sanitized_text
+                    return reasoning, answer, name
+                logger.warning("LLM provider %s returned an empty answer", name)
+            except Exception as exc:
+                logger.warning("LLM provider %s failed (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(0.8 * (attempt + 1))
+
 
     logger.error(
         "All LLM providers failed (%s tried); returning fallback message",
@@ -186,12 +199,15 @@ async def stream_with_fallback(
     *,
     skip_thinking: bool = False,
     fallback: Callable[[], str] | None = None,
+    chat_type: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Yields dicts: {type: thinking|reasoning|token|done|error, content/message}."""
     yield {"type": "thinking", "message": "Analizando tu pregunta y buscando contexto…"}
 
     reasoning, answer, provider = await complete_with_fallback(
         messages, model, skip_thinking=skip_thinking, fallback=fallback,
+        chat_type=chat_type, user_id=user_id,
     )
 
     if reasoning:
