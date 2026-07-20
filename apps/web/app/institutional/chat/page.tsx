@@ -32,13 +32,27 @@ export default function InstitutionalChatPage() {
     setMessages((m) => [...m, { role: 'user', content: userMsg }]);
     setLoading(true);
     try {
-      const res = await proxyJson<{ text: string; chart?: Message['chart'] }>('/institutional/chat', {
-        method: 'POST',
-        body: JSON.stringify({ message: userMsg, history }),
-      });
-      setMessages((m) => [...m, { role: 'assistant', content: res.text, chart: res.chart }]);
+      const res = await proxyJson<{ text: string; chart?: Message['chart']; degraded?: boolean }>(
+        '/institutional/chat',
+        {
+          method: 'POST',
+          body: JSON.stringify({ message: userMsg, history }),
+          soft: true,
+        },
+      );
+      const text =
+        res.text ||
+        'El asistente institucional está en modo limitado. Puede consultar el dashboard mientras restablecemos la respuesta completa.';
+      setMessages((m) => [...m, { role: 'assistant', content: text, chart: res.chart }]);
     } catch {
-      setMessages((m) => [...m, { role: 'assistant', content: 'No pude procesar su consulta. Intente de nuevo.' }]);
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'assistant',
+          content:
+            'El asistente institucional está en modo limitado. Puede consultar el dashboard mientras restablecemos la respuesta completa.',
+        },
+      ]);
     }
     setLoading(false);
   }

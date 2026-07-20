@@ -46,15 +46,18 @@ async def get_care_queue(
     include_resolved: bool = Query(False),
     sync_risk: bool = Query(True),
 ):
-    inst = _inst(user, institution_id)
-    synced = 0
-    if sync_risk:
-        try:
-            synced = cq.sync_high_risk_into_queue(inst)
-        except Exception:
-            synced = 0
-    tickets = cq.list_queue(inst, include_resolved=include_resolved)
-    return {"tickets": tickets, "synced_from_risk": synced}
+    try:
+        inst = _inst(user, institution_id)
+        synced = 0
+        if sync_risk:
+            try:
+                synced = cq.sync_high_risk_into_queue(inst)
+            except Exception:
+                synced = 0
+        tickets = cq.list_queue(inst, include_resolved=include_resolved)
+        return {"tickets": tickets or [], "synced_from_risk": synced, "degraded": False}
+    except Exception:
+        return {"tickets": [], "synced_from_risk": 0, "degraded": True}
 
 
 @router.patch("/care-queue/{ticket_id}")
@@ -133,8 +136,14 @@ async def prediction_ml(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = _inst(user, institution_id)
-    return ml_prediction_summary(inst)
+    try:
+        inst = _inst(user, institution_id)
+        data = ml_prediction_summary(inst)
+        if isinstance(data, dict):
+            return {**data, "degraded": data.get("degraded", False)}
+        return {"degraded": True}
+    except Exception:
+        return {"model_loaded": False, "predictions": [], "degraded": True}
 
 
 @router.get("/impact")
@@ -142,5 +151,11 @@ async def retention_impact(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = _inst(user, institution_id)
-    return impact_metrics(inst)
+    try:
+        inst = _inst(user, institution_id)
+        data = impact_metrics(inst)
+        if isinstance(data, dict):
+            return {**data, "degraded": False}
+        return {"degraded": True}
+    except Exception:
+        return {"degraded": True}

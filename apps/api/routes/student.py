@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
-from core.llm_router import stream_with_fallback, FALLBACK_MESSAGE, _chunk_text
+from core.llm_router import stream_with_fallback, FALLBACK_MESSAGE, DEMO_MESSAGE, _chunk_text
 from core.rate_limit import check_rate_limit
 from routes.deps import require_student
 from agents.digital_twin_agent import build_digital_twin_messages
@@ -302,6 +302,7 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
             yield {"event": "thinking", "data": json.dumps({"message": "Buscando recursos del catálogo…"})}
             full = ""
             is_counselor = False
+            degraded = False
             async for event in stream_with_fallback(messages, chat_type="digital_twin", user_id=user["id"]):
                 et = event.get("type")
                 if et == "thinking":
@@ -315,13 +316,17 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                 elif et == "done":
                     full = event.get("content", full)
                     is_counselor = bool(event.get("counselor"))
+                    degraded = bool(event.get("degraded"))
 
-            if is_counselor or not full.strip() or full.strip() == FALLBACK_MESSAGE or full.strip().startswith(
-                "Entiendo tu consulta. Configure las API keys"
-            ):
-                async for ev in _emit_handoff("El asistente IA no pudo responder; escalado a bienestar"):
+            # Explicit counselor provider only (crisis path uses guardrails above).
+            if is_counselor:
+                async for ev in _emit_handoff("El asistente solicitó escalado a bienestar"):
                     yield ev
                 return
+
+            if not full.strip():
+                full = FALLBACK_MESSAGE
+                degraded = True
 
             output_check = check_output(full, "digital_twin", user_id=user["id"], already_sanitized=True)
             if not output_check.allowed and output_check.user_message:
@@ -330,10 +335,19 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                 full = output_check.sanitized_text or full
 
             _save_assistant(full.strip())
-            yield {"event": "done", "data": json.dumps({"content": full.strip(), "counselor": False})}
+            yield {
+                "event": "done",
+                "data": json.dumps({
+                    "content": full.strip(),
+                    "counselor": False,
+                    "degraded": degraded or full.strip() in (FALLBACK_MESSAGE, DEMO_MESSAGE),
+                }),
+            }
         except Exception as exc:
             logger.error("Chat stream error: %s", exc)
-            async for ev in _emit_handoff(f"Error técnico en el chat: {exc}"):
+            reply = FALLBACK_MESSAGE
+            _save_assistant(reply)
+            async for ev in _yield_text_as_sse(reply, {"degraded": True, "counselor": False}):
                 yield ev
 
     return EventSourceResponse(event_generator())

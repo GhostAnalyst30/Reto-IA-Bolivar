@@ -11,10 +11,23 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MESSAGE = "Lo siento, el servidor no funciona"
+FALLBACK_MESSAGE = (
+    "Estoy en modo limitado por un momento, pero seguimos en la conversación. "
+    "Puedes contarme cómo te sientes, pedir orientación académica o recursos de bienestar UTB, "
+    "y te ayudo con lo que pueda. Si prefieres apoyo humano, usa «Prefiero hablar con una persona»."
+)
+
+DEMO_MESSAGE = (
+    "Estoy disponible en modo demostración UTB. Puedo orientarte sobre acompañamiento estudiantil, "
+    "bienestar y prevención de deserción mientras el servicio de IA completa la respuesta. "
+    "Cuéntame en qué te puedo ayudar hoy."
+)
 
 # ASCII-only: httpx on Windows rejects non-ASCII values in HTTP headers (e.g. ñ in X-Title).
 OPENROUTER_APP_TITLE = "UTB Te acompana"
+
+# Keep under Vercel proxy maxDuration (60s) with margin for SSE framing.
+LLM_HTTP_TIMEOUT_S = 45.0
 
 THINKING_PROMPT = """Responde en español. Primero escribe tu razonamiento dentro de etiquetas <thinking>...</thinking>.
 Luego escribe la respuesta final para el estudiante fuera de esas etiquetas."""
@@ -50,7 +63,7 @@ def _get_litellm_client() -> AsyncOpenAI:
 def _get_httpx_client() -> httpx.AsyncClient:
     global _httpx_client
     if _httpx_client is None or _httpx_client.is_closed:
-        _httpx_client = httpx.AsyncClient(timeout=60)
+        _httpx_client = httpx.AsyncClient(timeout=LLM_HTTP_TIMEOUT_S)
     return _httpx_client
 
 
@@ -152,40 +165,43 @@ async def complete_with_fallback(
     if settings.litellm_api_base:
         providers.append(("litellm", lambda m=enriched: _litellm_complete(m)))
 
-    if not providers:
-        if fallback:
-            return "", fallback(), "counselor"
-        demo = "Entiendo tu consulta. Configure las API keys para respuestas completas del tutor IA institucional UTB."
-        return "", demo, "demo"
+    try:
+        if not providers:
+            if fallback:
+                return "", fallback(), "counselor"
+            return "", DEMO_MESSAGE, "demo"
 
-    for name, fn in providers:
-        attempts = 2 if name == "openrouter" else 1
-        for attempt in range(attempts):
-            try:
-                raw = await fn()
-                reasoning, answer = _parse_thinking(raw)
-                if answer:
-                    if settings.guardrails_enabled and chat_type:
-                        from services.llm_guardrails import check_output
-                        out = check_output(answer, chat_type, user_id=user_id)  # type: ignore[arg-type]
-                        if not out.allowed and out.user_message:
-                            answer = out.user_message
-                        elif out.sanitized_text:
-                            answer = out.sanitized_text
-                    return reasoning, answer, name
-                logger.warning("LLM provider %s returned an empty answer", name)
-            except Exception as exc:
-                logger.warning("LLM provider %s failed (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
-                if attempt + 1 < attempts:
-                    await asyncio.sleep(0.8 * (attempt + 1))
+        for name, fn in providers:
+            attempts = 2 if name == "openrouter" else 1
+            for attempt in range(attempts):
+                try:
+                    raw = await asyncio.wait_for(fn(), timeout=LLM_HTTP_TIMEOUT_S)
+                    reasoning, answer = _parse_thinking(raw)
+                    if answer:
+                        if settings.guardrails_enabled and chat_type:
+                            from services.llm_guardrails import check_output
+                            out = check_output(answer, chat_type, user_id=user_id)  # type: ignore[arg-type]
+                            if not out.allowed and out.user_message:
+                                answer = out.user_message
+                            elif out.sanitized_text:
+                                answer = out.sanitized_text
+                        return reasoning, answer, name
+                    logger.warning("LLM provider %s returned an empty answer", name)
+                except Exception as exc:
+                    logger.warning("LLM provider %s failed (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
+                    if attempt + 1 < attempts:
+                        await asyncio.sleep(0.8 * (attempt + 1))
 
-
-    logger.error(
-        "All LLM providers failed (%s tried); returning fallback message",
-        ", ".join(name for name, _ in providers) or "none",
-    )
-    answer = fallback() if fallback else FALLBACK_MESSAGE
-    return "", answer, "failed"
+        logger.error(
+            "All LLM providers failed (%s tried); returning fallback message",
+            ", ".join(name for name, _ in providers) or "none",
+        )
+        answer = fallback() if fallback else FALLBACK_MESSAGE
+        return "", answer, "failed"
+    except Exception as exc:
+        logger.error("complete_with_fallback unexpected error: %s", exc)
+        answer = fallback() if fallback else FALLBACK_MESSAGE
+        return "", answer, "failed"
 
 
 def _chunk_text(text: str, chunk_size: int = 48) -> list[str]:
@@ -213,14 +229,19 @@ async def stream_with_fallback(
     if reasoning:
         yield {"type": "reasoning", "content": reasoning}
 
-    if provider == "failed" or provider == "counselor":
+    # Explicit counselor fallback callable → handoff signal. demo/failed keep the chat alive.
+    if provider == "counselor":
         answer = fallback() if fallback else FALLBACK_MESSAGE
         for chunk in _chunk_text(answer):
             yield {"type": "token", "content": chunk}
-        yield {"type": "done", "content": answer, "counselor": True}
+        yield {"type": "done", "content": answer, "counselor": True, "provider": provider}
         return
+
+    if not (answer or "").strip():
+        answer = FALLBACK_MESSAGE
+        provider = "failed"
 
     yield {"type": "thinking", "message": "Generando respuesta…"}
     for chunk in _chunk_text(answer):
         yield {"type": "token", "content": chunk}
-    yield {"type": "done", "content": answer}
+    yield {"type": "done", "content": answer, "provider": provider, "degraded": provider in ("demo", "failed")}

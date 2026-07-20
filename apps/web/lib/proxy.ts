@@ -11,6 +11,9 @@ export class ProxyError extends Error {
   }
 }
 
+const SOFT_CHAT_FALLBACK =
+  'El servicio está temporalmente limitado. Puedes seguir escribiendo; intentaremos responder en el próximo mensaje.';
+
 function mapProxyErrorMessage(status: number, detail?: string): string {
   if (detail === 'Not Found') {
     return 'Endpoint no disponible. Verifique que la API esté corriendo y actualizada.';
@@ -27,28 +30,53 @@ function mapProxyErrorMessage(status: number, detail?: string): string {
   return detail || `Error de API (${status})`;
 }
 
-export async function handleAuthError(status: number) {
-  if (status === 401) {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.href = '/login';
-  }
+/** Only force logout on clear session failures, not ambiguous proxy glitches. */
+export async function handleAuthError(status: number, detail?: string) {
+  if (status !== 401) return;
+  const explicit =
+    !detail ||
+    detail === 'No autenticado' ||
+    detail.toLowerCase().includes('not authenticated') ||
+    detail.toLowerCase().includes('invalid jwt') ||
+    detail.toLowerCase().includes('jwt') ||
+    detail.toLowerCase().includes('session');
+  if (!explicit) return;
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  window.location.href = '/login';
 }
 
-export async function proxyJson<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+export type ProxyJsonOptions = RequestInit & {
+  /** When true, 5xx/network return null instead of throwing (for non-critical reads). */
+  soft?: boolean;
+};
+
+export async function proxyJson<T = unknown>(path: string, options: ProxyJsonOptions = {}): Promise<T> {
+  const { soft, ...init } = options;
   const scopedPath = appendInstitutionQuery(path);
-  const res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, options);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    await handleAuthError(res.status);
-    const detail = (data as { detail?: string; error?: string }).detail
-      || (data as { error?: string }).error;
-    throw new ProxyError(
-      mapProxyErrorMessage(res.status, detail),
-      res.status
-    );
+  try {
+    const res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, init);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = (data as { detail?: string; error?: string }).detail
+        || (data as { error?: string }).error;
+      await handleAuthError(res.status, detail);
+      if (soft && res.status >= 500) {
+        return { ...(typeof data === 'object' && data ? data : {}), degraded: true } as T;
+      }
+      throw new ProxyError(
+        mapProxyErrorMessage(res.status, detail),
+        res.status
+      );
+    }
+    return data as T;
+  } catch (e) {
+    if (e instanceof ProxyError) throw e;
+    if (soft) {
+      return { degraded: true } as T;
+    }
+    throw new ProxyError('Backend no disponible. Intente de nuevo en unos segundos.', 503);
   }
-  return data as T;
 }
 
 export interface HandoffPayload {
@@ -68,36 +96,54 @@ export async function proxyStream(
   path: string,
   body: object,
   callbacks: StreamCallbacks | ((token: string) => void),
-): Promise<{ content: string; handoff?: HandoffPayload }> {
+): Promise<{ content: string; handoff?: HandoffPayload; degraded?: boolean }> {
   const cb: StreamCallbacks = typeof callbacks === 'function'
     ? { onToken: callbacks }
     : callbacks;
 
   const scopedPath = appendInstitutionQuery(path);
-  const res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    cb.onToken?.(SOFT_CHAT_FALLBACK);
+    return { content: SOFT_CHAT_FALLBACK, degraded: true };
+  }
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    await handleAuthError(res.status);
+    const detail = (data as { detail?: string; error?: string }).detail
+      || (data as { error?: string }).error;
+    await handleAuthError(res.status, detail);
+
+    // Soft-degrade operational failures so the twin chat keeps going.
+    if (res.status >= 500) {
+      cb.onToken?.(SOFT_CHAT_FALLBACK);
+      return { content: SOFT_CHAT_FALLBACK, degraded: true };
+    }
+
     throw new ProxyError(
-      mapProxyErrorMessage(res.status, (data as { detail?: string; error?: string }).detail
-        || (data as { error?: string }).error),
+      mapProxyErrorMessage(res.status, detail),
       res.status
     );
   }
 
   const reader = res.body?.getReader();
-  if (!reader) throw new ProxyError('No stream', 500);
+  if (!reader) {
+    cb.onToken?.(SOFT_CHAT_FALLBACK);
+    return { content: SOFT_CHAT_FALLBACK, degraded: true };
+  }
 
   const decoder = new TextDecoder();
   let buffer = '';
   let full = '';
   let currentEvent = 'message';
   let handoff: HandoffPayload | undefined;
+  let degraded = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -122,9 +168,15 @@ export async function proxyStream(
           cb.onHandoffWaiting?.(handoff);
         } else if (currentEvent === 'guardrail') {
           cb.onGuardrail?.(parsed);
-        } else if (currentEvent === 'done' && parsed.counselor && parsed.handoff_mode) {
-          handoff = parsed as HandoffPayload;
-          cb.onHandoffWaiting?.(handoff);
+        } else if (currentEvent === 'done') {
+          if (parsed.degraded) degraded = true;
+          if (parsed.counselor && parsed.handoff_mode) {
+            handoff = parsed as HandoffPayload;
+            cb.onHandoffWaiting?.(handoff);
+          }
+          if (parsed.content && !full) {
+            full = parsed.content;
+          }
         } else if (parsed.token) {
           full += parsed.token;
           cb.onToken?.(parsed.token);
@@ -134,5 +186,11 @@ export async function proxyStream(
       }
     }
   }
-  return { content: full, handoff };
+
+  if (!full.trim()) {
+    cb.onToken?.(SOFT_CHAT_FALLBACK);
+    return { content: SOFT_CHAT_FALLBACK, degraded: true, handoff };
+  }
+
+  return { content: full, handoff, degraded };
 }

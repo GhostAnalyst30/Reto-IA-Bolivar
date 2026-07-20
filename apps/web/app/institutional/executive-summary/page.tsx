@@ -30,10 +30,22 @@ export default function ExecutiveSummaryPage() {
     setLoadingInsights(true);
     setInsightsError('');
     try {
-      const dir = await proxyJson<{ insights: string }>('/institutional/director/chat', { method: 'POST' });
-      setInsights(dir.insights || '');
+      const dir = await proxyJson<{ insights: string; degraded?: boolean }>(
+        '/institutional/director/chat',
+        { method: 'POST', soft: true },
+      );
+      const text =
+        dir.insights ||
+        'Resumen en modo limitado: revise KPIs de retención y la cola de cuidado. Genere de nuevo cuando el servicio esté disponible.';
+      setInsights(text);
+      if (dir.degraded && !dir.insights) {
+        setInsightsError('Análisis en modo limitado.');
+      }
     } catch (e) {
-      setInsightsError(e instanceof Error ? e.message : 'No se pudo generar el resumen.');
+      setInsights(
+        'Resumen en modo limitado: revise KPIs de retención y la cola de cuidado. Genere de nuevo cuando el servicio esté disponible.',
+      );
+      setInsightsError(e instanceof Error ? e.message : 'Análisis en modo limitado.');
     } finally {
       setLoadingInsights(false);
     }

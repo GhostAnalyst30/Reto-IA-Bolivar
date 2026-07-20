@@ -28,6 +28,42 @@ logger = logging.getLogger(__name__)
 
 CREATABLE_ROLES = frozenset({"student", "area_head", "dean", "vice_president", "rector", "admin"})
 
+INSTITUTIONAL_CHAT_FALLBACK = (
+    "El asistente institucional está en modo limitado. "
+    "Puede consultar el dashboard, riesgo y cola de cuidado mientras restablecemos la respuesta completa."
+)
+
+DIRECTOR_INSIGHTS_FALLBACK = (
+    "Resumen en modo limitado: revise KPIs de retención, la distribución de riesgo y la cola de cuidado "
+    "para priorizar acompañamiento. Genere de nuevo el análisis cuando el servicio de IA esté disponible."
+)
+
+
+def _empty_dashboard(*, degraded: bool = True) -> dict:
+    return {
+        "kpis": [],
+        "charts": {
+            "enrollment_trend": [],
+            "engagement": [],
+        },
+        "actions": [],
+        "prediction": {},
+        "cohort_alerts": [],
+        "degraded": degraded,
+    }
+
+
+def _safe_dashboard(user: dict, institution_id: str | None) -> dict:
+    try:
+        inst = effective_institution_id(user, institution_id)
+        data = compute_dashboard({**user, "institution_id": inst})
+        if isinstance(data, dict) and "degraded" not in data:
+            data = {**data, "degraded": False}
+        return data if isinstance(data, dict) else _empty_dashboard()
+    except Exception as exc:
+        logger.error("Dashboard compute failed: %s", exc)
+        return _empty_dashboard(degraded=True)
+
 
 class InterventionCreate(BaseModel):
     student_id: str
@@ -238,8 +274,7 @@ async def get_dashboard(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    return compute_dashboard({**user, "institution_id": inst})
+    return _safe_dashboard(user, institution_id)
 
 
 @router.get("/analytics/dashboard")
@@ -247,8 +282,7 @@ async def get_analytics_dashboard(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    return compute_dashboard({**user, "institution_id": inst})
+    return _safe_dashboard(user, institution_id)
 
 
 @router.get("/kpis")
@@ -256,9 +290,7 @@ async def get_kpis(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    dashboard = compute_dashboard({**user, "institution_id": inst})
-    return dashboard["kpis"]
+    return _safe_dashboard(user, institution_id).get("kpis") or []
 
 
 @router.get("/actions")
@@ -266,8 +298,7 @@ async def get_actions(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    return compute_dashboard({**user, "institution_id": inst})["actions"]
+    return _safe_dashboard(user, institution_id).get("actions") or []
 
 
 @router.get("/prediction")
@@ -275,8 +306,7 @@ async def get_prediction(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    return compute_dashboard({**user, "institution_id": inst})["prediction"]
+    return _safe_dashboard(user, institution_id).get("prediction") or {}
 
 
 @router.get("/risk/students")
@@ -289,17 +319,21 @@ async def get_risk_students(
     min_score: float | None = Query(None),
     dominant_cause: str | None = Query(None),
 ):
-    inst = effective_institution_id(user, institution_id)
-    if not inst:
+    try:
+        inst = effective_institution_id(user, institution_id)
+        if not inst:
+            return []
+        return get_latest_risk_by_institution(
+            inst,
+            risk_level=risk_level,
+            program=program,
+            search=search,
+            min_score=min_score,
+            dominant_cause=dominant_cause,
+        ) or []
+    except Exception as exc:
+        logger.error("Risk students list failed: %s", exc)
         return []
-    return get_latest_risk_by_institution(
-        inst,
-        risk_level=risk_level,
-        program=program,
-        search=search,
-        min_score=min_score,
-        dominant_cause=dominant_cause,
-    )
 
 
 @router.post("/risk/compute")
@@ -640,10 +674,23 @@ async def director_chat(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    raise HTTPException(
-        status_code=410,
-        detail="Director IA deshabilitado. Use /institutional/chat o el panel de impacto.",
+    """Executive insights for resumen ejecutivo — soft-degrades instead of 410/503."""
+    dashboard = _safe_dashboard(user, institution_id)
+    kpis = dashboard.get("kpis") or []
+    charts = dashboard.get("charts") or {}
+    prompt = (
+        "Genera un resumen ejecutivo breve (máximo 120 palabras) sobre retención estudiantil, "
+        "riesgo de deserción y acciones prioritarias a partir de los KPIs institucionales."
     )
+    try:
+        raw = await institutional_chat_reply(prompt, [], kpis, charts)
+        text, _ = parse_chart_from_response(raw or "")
+        insights = (text or "").strip() or DIRECTOR_INSIGHTS_FALLBACK
+        degraded = bool(dashboard.get("degraded")) or insights == DIRECTOR_INSIGHTS_FALLBACK
+        return {"insights": insights, "degraded": degraded, "provider": "fallback" if degraded else "llm"}
+    except Exception as exc:
+        logger.error("Director chat failed: %s", exc)
+        return {"insights": DIRECTOR_INSIGHTS_FALLBACK, "degraded": True, "provider": "fallback"}
 
 
 @router.post("/chat")
@@ -661,8 +708,7 @@ async def institutional_chat(
             "guardrail": input_check.action,
         }
 
-    inst = effective_institution_id(user, institution_id)
-    dashboard = compute_dashboard({**user, "institution_id": inst})
+    dashboard = _safe_dashboard(user, institution_id)
     kpis = dashboard.get("kpis") or []
     charts = dashboard.get("charts") or {}
     try:
@@ -672,8 +718,20 @@ async def institutional_chat(
             raw = output_check.user_message
         else:
             raw = output_check.sanitized_text or raw
-        text, chart = parse_chart_from_response(raw)
+        text, chart = parse_chart_from_response(raw or "")
+        if not (text or "").strip():
+            text = INSTITUTIONAL_CHAT_FALLBACK
+        return {
+            "text": text,
+            "chart": chart,
+            "degraded": bool(dashboard.get("degraded")) or text == INSTITUTIONAL_CHAT_FALLBACK,
+            "provider": "llm",
+        }
     except Exception as exc:
         logger.error("Institutional chat failed: %s", exc)
-        raise HTTPException(status_code=503, detail="No se pudo generar la respuesta") from exc
-    return {"text": text, "chart": chart}
+        return {
+            "text": INSTITUTIONAL_CHAT_FALLBACK,
+            "chart": None,
+            "degraded": True,
+            "provider": "fallback",
+        }

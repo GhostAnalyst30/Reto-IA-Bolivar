@@ -186,13 +186,25 @@ export default function TwinChatPage() {
         },
       });
       if (result.handoff) applyHandoff(result.handoff);
+      // If tokens never arrived but done/fallback returned content, paint the bubble.
+      if (!assistant.trim() && result.content?.trim()) {
+        assistant = result.content.trim();
+        setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: assistant }]);
+      }
       const userCount = nextMsgs.filter((m) => m.role === 'user').length;
       if (userCount >= 15) setLimitReached(true);
       loadSelfHelpFromConversation(nextMsgs, content);
       if (activeChat) loadMessages(activeChat, true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
-      if (msg.includes('409') || msg.toLowerCase().includes('nuevo chat') || msg.toLowerCase().includes('15') || msg.toLowerCase().includes('cerrada')) {
+      const status = e && typeof e === 'object' && 'status' in e ? Number((e as { status: number }).status) : 0;
+      if (
+        status === 409 ||
+        msg.includes('409') ||
+        msg.toLowerCase().includes('nuevo chat') ||
+        msg.toLowerCase().includes('15') ||
+        msg.toLowerCase().includes('cerrada')
+      ) {
         if (msg.toLowerCase().includes('cerrada')) {
           setHandoffMode('resolved');
           setError('Esta conversación fue cerrada. Inicia una conversación nueva para continuar.');
@@ -200,12 +212,14 @@ export default function TwinChatPage() {
           setLimitReached(true);
           setError('Has alcanzado el límite de 15 mensajes. Inicia una conversación nueva para continuar.');
         }
+      } else if (status === 429) {
+        setError('Demasiados mensajes. Espera un momento e intenta de nuevo.');
       } else {
-        try {
-          await requestHumanHandoff('Error de conexión; el estudiante necesita apoyo humano');
-        } catch {
-          setError('No se pudo enviar el mensaje. Intenta de nuevo.');
-        }
+        // Keep the chat usable: show a soft assistant bubble instead of forcing human handoff.
+        const soft =
+          'El servicio está temporalmente limitado. Puedes seguir escribiendo; intentaremos responder en el próximo mensaje.';
+        setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: soft }]);
+        setError('');
       }
     }
     setStreaming(false);
