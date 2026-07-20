@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, LoadingState, EmptyState } from '@/components/ui';
-import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
+import { LazyMarkdownMessage } from '@/components/ui/LazyMarkdownMessage';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { proxyJson } from '@/lib/proxy';
 import { Inbox, Send, CheckCircle, Loader2 } from 'lucide-react';
@@ -200,7 +200,7 @@ export default function CounselorInboxPage() {
                         <p className="text-xs text-muted mb-1">Asistente IA (historial)</p>
                       )}
                       {m.role === 'assistant' || m.role === 'counselor' ? (
-                        <MarkdownMessage content={m.content} />
+                        <LazyMarkdownMessage content={m.content} />
                       ) : (
                         m.content
                       )}

@@ -3,18 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button, Input } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
-import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
+import { LazyMarkdownMessage } from '@/components/ui/LazyMarkdownMessage';
+import { LazyChatChart } from '@/components/portal/charts/LazyChatChart';
 import { proxyJson } from '@/lib/proxy';
 import { Send, Loader2 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   chart?: { type: string; title: string; data: { label: string; value: number }[] } | null;
 }
-
-const COLORS = ['#003A70', '#F28C28', '#6366F1', '#4A90C2'];
 
 export default function InstitutionalChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,32 +43,6 @@ export default function InstitutionalChatPage() {
     setLoading(false);
   }
 
-  function renderChart(chart: NonNullable<Message['chart']>) {
-    if (!chart?.data?.length) return null;
-    if (chart.type === 'pie') {
-      return (
-        <ResponsiveContainer width="100%" height={180}>
-          <PieChart>
-            <Pie data={chart.data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={60} label>
-              {chart.data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      );
-    }
-    return (
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={chart.data}>
-          <XAxis dataKey="label" fontSize={11} />
-          <YAxis fontSize={11} />
-          <Tooltip />
-          <Bar dataKey="value" fill="#003A70" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div>
@@ -92,11 +64,11 @@ export default function InstitutionalChatPage() {
                   ? 'bg-[color-mix(in_srgb,var(--portal-accent)_15%,transparent)]'
                   : 'border border-brand-border bg-brand-bg'
               }`}>
-                <MarkdownMessage content={m.content} />
+                <LazyMarkdownMessage content={m.content} />
                 {m.chart && (
                   <div className="mt-3">
                     <p className="text-xs font-medium mb-2">{m.chart.title}</p>
-                    {renderChart(m.chart)}
+                    <LazyChatChart chart={m.chart} />
                   </div>
                 )}
               </div>

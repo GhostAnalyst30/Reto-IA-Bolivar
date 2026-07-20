@@ -1,6 +1,6 @@
 'use client';
 
-import { LoadingState } from '@/components/ui';
+import { Skeleton } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
 import { useProxyJson } from '@/lib/use-proxy-json';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
@@ -48,21 +48,23 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   high: 'Alta',
 };
 
+function SectionSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <PortalCard key={i}>
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="mt-3 h-9 w-1/3" />
+        </PortalCard>
+      ))}
+    </div>
+  );
+}
+
 export default function PredictionPage() {
   const heuristic = useProxyJson<HeuristicPrediction>('/institutional/prediction');
   const ml = useProxyJson<MlPrediction>('/institutional/prediction/ml');
   const impact = useProxyJson<Impact>('/institutional/impact');
-
-  const loading = heuristic.isLoading || ml.isLoading || impact.isLoading;
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <h1 className="font-display text-2xl font-bold">Predicción e impacto</h1>
-        <LoadingState />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -71,6 +73,8 @@ export default function PredictionPage() {
         <p className="text-muted">Modelo ML + trayectoria semanal de riesgo y CareQueue</p>
       </div>
 
+      {heuristic.isLoading && <SectionSkeleton />}
+      {heuristic.error && <p className="text-red-500 text-sm">{heuristic.error}</p>}
       {heuristic.data && (
         <div className="grid gap-4 md:grid-cols-3">
           <PortalCard>
@@ -96,6 +100,13 @@ export default function PredictionPage() {
         </div>
       )}
 
+      {ml.isLoading && (
+        <PortalCard>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="mt-4 h-24 w-full" />
+        </PortalCard>
+      )}
+      {ml.error && <p className="text-red-500 text-sm">{ml.error}</p>}
       {ml.data && (
         <PortalCard>
           <h2 className="font-semibold mb-3">DropoutPredict (ML)</h2>
@@ -129,6 +140,17 @@ export default function PredictionPage() {
         </PortalCard>
       )}
 
+      {impact.isLoading && (
+        <PortalCard>
+          <Skeleton className="h-4 w-32" />
+          <div className="mt-4 grid gap-4 md:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        </PortalCard>
+      )}
+      {impact.error && <p className="text-red-500 text-sm">{impact.error}</p>}
       {impact.data && (
         <PortalCard>
           <h2 className="font-semibold mb-3 flex items-center gap-2">
@@ -166,10 +188,6 @@ export default function PredictionPage() {
             </p>
           )}
         </PortalCard>
-      )}
-
-      {(heuristic.error || ml.error || impact.error) && (
-        <p className="text-red-500 text-sm">{heuristic.error || ml.error || impact.error}</p>
       )}
     </div>
   );

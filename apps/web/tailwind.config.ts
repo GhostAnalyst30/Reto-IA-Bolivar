@@ -23,8 +23,8 @@ module.exports = {
         privacy: '#6366F1',
       },
       fontFamily: {
-        sans: ['DM Sans', 'system-ui', 'sans-serif'],
-        display: ['Newsreader', 'Georgia', 'serif'],
+        sans: ['var(--font-dm-sans)', 'DM Sans', 'system-ui', 'sans-serif'],
+        display: ['var(--font-newsreader)', 'Newsreader', 'Georgia', 'serif'],
       },
     },
   },

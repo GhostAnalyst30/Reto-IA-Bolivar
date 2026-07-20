@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
-import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
+import { LazyMarkdownMessage } from '@/components/ui/LazyMarkdownMessage';
 import { BentoCell } from '@/components/ui/BentoGrid';
 import { Send, Plus, MessageSquare, Heart, Loader2, Phone, AlertCircle, UserRound } from 'lucide-react';
 import { proxyJson, proxyStream, type HandoffPayload } from '@/lib/proxy';
@@ -223,7 +223,10 @@ export default function TwinChatPage() {
     });
     applyHandoff({
       handoff_mode: 'human',
-      counselor: counselor || { full_name: 'Equipo de bienestar UTB', email: PSYCHOLOGIST_EMAIL },
+      counselor: {
+        full_name: counselor?.full_name || 'Equipo de bienestar UTB',
+        email: counselor?.email || PSYCHOLOGIST_EMAIL,
+      },
     });
     setShowSupport(false);
     setSupportReason('');
@@ -319,7 +322,7 @@ export default function TwinChatPage() {
                     </p>
                   )}
                   {m.role === 'assistant' || m.role === 'counselor' ? (
-                    <MarkdownMessage content={m.content} />
+                    <LazyMarkdownMessage content={m.content} />
                   ) : (
                     m.content
                   )}

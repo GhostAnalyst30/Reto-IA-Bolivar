@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui';
 import { PortalCard } from '@/components/portal/PortalCard';
-import { MarkdownMessage } from '@/components/ui/MarkdownMessage';
+import { LazyMarkdownMessage } from '@/components/ui/LazyMarkdownMessage';
 import { LazyBarChart, LazyPieChart } from '@/components/portal/charts/LazyCharts';
 import { proxyJson } from '@/lib/proxy';
 import { useProxyJson } from '@/lib/use-proxy-json';
@@ -61,7 +61,7 @@ export default function ExecutiveSummaryPage() {
           <h2 className="font-semibold mb-3">Insights del Director de IA</h2>
           {insightsError && <p className="text-red-400 text-sm mb-2">{insightsError}</p>}
           {insights ? (
-            <MarkdownMessage content={insights} className="text-muted" />
+            <LazyMarkdownMessage content={insights} className="text-muted" />
           ) : (
             <p className="text-muted">
               {loadingInsights ? 'Generando resumen…' : 'Pulse «Generar análisis IA» para obtener insights.'}
