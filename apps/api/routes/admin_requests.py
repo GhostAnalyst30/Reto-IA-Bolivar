@@ -8,6 +8,7 @@ from core.auth_keys import hash_auth_key
 from core.email_notify import notify_account_approved, notify_account_rejected
 from core.db_helpers import require_updated
 from core.security import invalidate_user_cache
+from core.cache import platform_cache
 from routes.deps import (
     require_admin,
     require_institutional,
@@ -106,7 +107,8 @@ async def approve_request(request_id: str, admin: dict = Depends(require_institu
         )
 
     invalidate_user_cache(data["user_id"])
-    return {"status": "approved"}
+    platform_cache.invalidate("dashboard")
+    return {"status": "approved", "user_id": data["user_id"]}
 
 
 @router.post("/requests/{request_id}/reject")
@@ -121,7 +123,8 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
             raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
-    user_update = sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", req.data["user_id"]).select("id, status").execute()
+    user_id = req.data["user_id"]
+    user_update = sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", user_id).select("id, status").execute()
     require_updated(user_update, "usuario")
     req_update = sb.table("registration_requests").update({
         "status": "rejected",
@@ -131,7 +134,7 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
     }).eq("id", request_id).select("id, status").execute()
     require_updated(req_update, "solicitud")
 
-    user_row = sb.table("users").select("email, full_name").eq("id", req.data["user_id"]).single().execute()
+    user_row = sb.table("users").select("email, full_name").eq("id", user_id).single().execute()
     if user_row.data and user_row.data.get("email"):
         await notify_account_rejected(
             user_row.data["email"],
@@ -139,8 +142,9 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
             body.reason,
         )
 
-    return {"status": "rejected"}
-
+    invalidate_user_cache(user_id)
+    platform_cache.invalidate("dashboard")
+    return {"status": "rejected", "user_id": user_id}
 
 @router.get("/auth-keys")
 async def list_auth_keys(

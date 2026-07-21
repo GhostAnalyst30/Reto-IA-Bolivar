@@ -1,4 +1,4 @@
-import { PortalShell, STUDENT_NAV, STUDENT_NAV_LEARNING } from '@/components/layout/PortalShell';
+import { PortalShell, STUDENT_NAV } from '@/components/layout/PortalShell';
 import { getPortalProfile } from '@/lib/auth-context';
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin } from '@/lib/utils';
@@ -13,7 +13,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
   }
 
   return (
-    <PortalShell nav={STUDENT_NAV} learningNav={STUDENT_NAV_LEARNING} role={profile.role} portal="student">
+    <PortalShell nav={STUDENT_NAV} role={profile.role} portal="student">
       {children}
     </PortalShell>
   );

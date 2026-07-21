@@ -4,6 +4,8 @@
  */
 
 const PROFILE_TTL_MS = 120_000;
+/** Pending/rejected must refresh fast so approve/reject is visible without waiting full TTL. */
+const PROFILE_PENDING_TTL_MS = 5_000;
 const PSYCH_TTL_MS = 300_000;
 
 interface ProfileEntry {
@@ -34,11 +36,16 @@ export function setCachedProfile(
   userId: string,
   profile: { role: string; status: string; institution_id?: string | null },
 ) {
+  const status = profile.status || '';
+  const ttl =
+    status === 'pending' || status === 'rejected'
+      ? PROFILE_PENDING_TTL_MS
+      : PROFILE_TTL_MS;
   profileCache.set(userId, {
     role: profile.role,
-    status: profile.status,
+    status,
     institution_id: profile.institution_id ?? null,
-    expires: Date.now() + PROFILE_TTL_MS,
+    expires: Date.now() + ttl,
   });
 }
 

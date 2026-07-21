@@ -1,4 +1,4 @@
-"""Multi-provider LLM router with fallback chain."""
+"""Multi-provider LLM router with OpenRouter multi-model fallback chain."""
 import asyncio
 import logging
 import re
@@ -21,6 +21,11 @@ DEMO_MESSAGE = (
     "Estoy disponible en modo demostración UTB. Puedo orientarte sobre acompañamiento estudiantil, "
     "bienestar y prevención de deserción mientras el servicio de IA completa la respuesta. "
     "Cuéntame en qué te puedo ayudar hoy."
+)
+
+HANDOFF_MESSAGE = (
+    "No pude completar una respuesta automática en este momento. "
+    "Te estoy conectando con el equipo de bienestar UTB para que un psicólogo continúe contigo en este mismo chat."
 )
 
 # ASCII-only: httpx on Windows rejects non-ASCII values in HTTP headers (e.g. ñ in X-Title).
@@ -74,6 +79,17 @@ def _parse_thinking(text: str) -> tuple[str, str]:
         answer = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
         return reasoning, answer
     return "", text.strip()
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if status == 429:
+        return True
+    response = getattr(exc, "response", None)
+    if response is not None and getattr(response, "status_code", None) == 429:
+        return True
+    msg = str(exc).lower()
+    return "429" in msg or "rate limit" in msg or "rate_limit" in msg
 
 
 async def _openrouter_complete(messages: list[dict], model: str) -> str:
@@ -136,6 +152,18 @@ async def _litellm_complete(messages: list[dict]) -> str:
     return response.choices[0].message.content or ""
 
 
+def _apply_output_guardrails(answer: str, chat_type: str | None, user_id: str | None) -> str:
+    if not (settings.guardrails_enabled and chat_type):
+        return answer
+    from services.llm_guardrails import check_output
+    out = check_output(answer, chat_type, user_id=user_id)  # type: ignore[arg-type]
+    if not out.allowed and out.user_message:
+        return out.user_message
+    if out.sanitized_text:
+        return out.sanitized_text
+    return answer
+
+
 async def complete_with_fallback(
     messages: list[dict],
     model: str | None = None,
@@ -144,9 +172,14 @@ async def complete_with_fallback(
     fallback: Callable[[], str] | None = None,
     chat_type: str | None = None,
     user_id: str | None = None,
+    escalate_on_failure: bool = False,
 ) -> tuple[str, str, str]:
-    """Returns (reasoning, answer, provider_used). On total failure uses fallback or FALLBACK_MESSAGE."""
-    model = model or settings.llm_model_tutor
+    """Returns (reasoning, answer, provider_used).
+
+    OpenRouter tries up to N free models (one attempt each). Then Gemini → HF → LiteLLM.
+    On total failure: counselor if escalate_on_failure or fallback callable; else FALLBACK_MESSAGE.
+    """
+    primary = model or settings.llm_model_tutor
     enriched = messages.copy()
     if not skip_thinking:
         if enriched and enriched[0]["role"] == "system":
@@ -156,8 +189,11 @@ async def complete_with_fallback(
 
     providers: list[tuple[str, Callable[[], Awaitable[str]]]] = []
     if settings.openrouter_api_key:
-        # Un solo slot OpenRouter; reintento controlado abajo (no 3 fallos idénticos).
-        providers.append(("openrouter", lambda m=enriched, mod=model: _openrouter_complete(m, mod)))
+        for or_model in settings.openrouter_model_chain(primary):
+            providers.append((
+                f"openrouter:{or_model}",
+                lambda m=enriched, mod=or_model: _openrouter_complete(m, mod),
+            ))
     if settings.gemini_api_key:
         providers.append(("gemini", lambda m=enriched: _gemini_complete(m)))
     if settings.huggingface_api_key:
@@ -165,43 +201,42 @@ async def complete_with_fallback(
     if settings.litellm_api_base:
         providers.append(("litellm", lambda m=enriched: _litellm_complete(m)))
 
+    def _failure_result() -> tuple[str, str, str]:
+        if escalate_on_failure or fallback:
+            answer = fallback() if fallback else HANDOFF_MESSAGE
+            return "", answer, "counselor"
+        return "", FALLBACK_MESSAGE, "failed"
+
     try:
         if not providers:
-            if fallback:
-                return "", fallback(), "counselor"
+            if escalate_on_failure or fallback:
+                return "", (fallback() if fallback else HANDOFF_MESSAGE), "counselor"
             return "", DEMO_MESSAGE, "demo"
 
         for name, fn in providers:
-            attempts = 2 if name == "openrouter" else 1
-            for attempt in range(attempts):
-                try:
-                    raw = await asyncio.wait_for(fn(), timeout=LLM_HTTP_TIMEOUT_S)
-                    reasoning, answer = _parse_thinking(raw)
-                    if answer:
-                        if settings.guardrails_enabled and chat_type:
-                            from services.llm_guardrails import check_output
-                            out = check_output(answer, chat_type, user_id=user_id)  # type: ignore[arg-type]
-                            if not out.allowed and out.user_message:
-                                answer = out.user_message
-                            elif out.sanitized_text:
-                                answer = out.sanitized_text
-                        return reasoning, answer, name
-                    logger.warning("LLM provider %s returned an empty answer", name)
-                except Exception as exc:
-                    logger.warning("LLM provider %s failed (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
-                    if attempt + 1 < attempts:
-                        await asyncio.sleep(0.8 * (attempt + 1))
+            try:
+                raw = await asyncio.wait_for(fn(), timeout=LLM_HTTP_TIMEOUT_S)
+                reasoning, answer = _parse_thinking(raw)
+                if answer:
+                    answer = _apply_output_guardrails(answer, chat_type, user_id)
+                    provider_label = name.split(":", 1)[0]
+                    return reasoning, answer, provider_label
+                logger.warning("LLM provider %s returned an empty answer", name)
+            except Exception as exc:
+                if _is_rate_limit_error(exc):
+                    logger.warning("LLM provider %s rate-limited; trying next model: %s", name, exc)
+                else:
+                    logger.warning("LLM provider %s failed: %s", name, exc)
 
         logger.error(
-            "All LLM providers failed (%s tried); returning fallback message",
+            "All LLM providers failed (%s tried); escalate=%s",
             ", ".join(name for name, _ in providers) or "none",
+            escalate_on_failure,
         )
-        answer = fallback() if fallback else FALLBACK_MESSAGE
-        return "", answer, "failed"
+        return _failure_result()
     except Exception as exc:
         logger.error("complete_with_fallback unexpected error: %s", exc)
-        answer = fallback() if fallback else FALLBACK_MESSAGE
-        return "", answer, "failed"
+        return _failure_result()
 
 
 def _chunk_text(text: str, chunk_size: int = 48) -> list[str]:
@@ -217,27 +252,33 @@ async def stream_with_fallback(
     fallback: Callable[[], str] | None = None,
     chat_type: str | None = None,
     user_id: str | None = None,
+    escalate_on_failure: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """Yields dicts: {type: thinking|reasoning|token|done|error, content/message}."""
     yield {"type": "thinking", "message": "Analizando tu pregunta y buscando contexto…"}
 
     reasoning, answer, provider = await complete_with_fallback(
         messages, model, skip_thinking=skip_thinking, fallback=fallback,
-        chat_type=chat_type, user_id=user_id,
+        chat_type=chat_type, user_id=user_id, escalate_on_failure=escalate_on_failure,
     )
 
     if reasoning:
         yield {"type": "reasoning", "content": reasoning}
 
-    # Explicit counselor fallback callable → handoff signal. demo/failed keep the chat alive.
     if provider == "counselor":
-        answer = fallback() if fallback else FALLBACK_MESSAGE
+        answer = answer or HANDOFF_MESSAGE
         for chunk in _chunk_text(answer):
             yield {"type": "token", "content": chunk}
         yield {"type": "done", "content": answer, "counselor": True, "provider": provider}
         return
 
     if not (answer or "").strip():
+        if escalate_on_failure:
+            answer = HANDOFF_MESSAGE
+            for chunk in _chunk_text(answer):
+                yield {"type": "token", "content": chunk}
+            yield {"type": "done", "content": answer, "counselor": True, "provider": "counselor"}
+            return
         answer = FALLBACK_MESSAGE
         provider = "failed"
 

@@ -6,13 +6,19 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from core.supabase_client import get_supabase
-from core.llm_router import stream_with_fallback, FALLBACK_MESSAGE, DEMO_MESSAGE, _chunk_text
+from core.llm_router import (
+    stream_with_fallback,
+    FALLBACK_MESSAGE,
+    DEMO_MESSAGE,
+    HANDOFF_MESSAGE,
+    _chunk_text,
+)
 from core.rate_limit import check_rate_limit
 from routes.deps import require_student
 from agents.digital_twin_agent import build_digital_twin_messages
 from agents.vocational_agent import get_programs
 from services.chat_handoff import escalate_chat_to_human, counselor_public_profile, get_counselor_user
-from services.llm_guardrails import check_input, check_output, scrub_context_for_llm
+from services.llm_guardrails import check_input, scrub_context_for_llm
 from services.risk_queue import enqueue_risk_recompute
 
 router = APIRouter(tags=["student"])
@@ -171,7 +177,11 @@ async def request_handoff(chat_id: str, body: HandoffCreate, user: dict = Depend
         raise HTTPException(status_code=409, detail="Esta conversación fue cerrada. Inicia un chat nuevo.")
 
     counselor = escalate_chat_to_human(
-        sb, chat_id, user["id"], body.reason or "El estudiante solicitó hablar con una persona"
+        sb,
+        chat_id,
+        user["id"],
+        body.reason or "El estudiante solicitó hablar con una persona",
+        escalation_reason="student_request",
     )
     inst = user.get("institution_id")
     if inst:
@@ -251,7 +261,8 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
 
         if input_check.action == "handoff":
             escalate_chat_to_human(
-                sb, chat_id, user["id"], "Señales de crisis detectadas por guardrails"
+                sb, chat_id, user["id"], "Señales de crisis detectadas por guardrails",
+                escalation_reason="crisis",
             )
             counselor = get_counselor_user(sb)
             payload = _handoff_payload(counselor)
@@ -292,18 +303,31 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                 "privacy_notice": input_check.privacy_notice,
             })}
 
-        async def _emit_handoff(reason: str):
-            counselor = escalate_chat_to_human(sb, chat_id, user["id"], reason)
+        async def _emit_handoff(reason: str, notice: str = "", *, already_streamed: bool = False):
+            counselor = escalate_chat_to_human(
+                sb, chat_id, user["id"], reason, escalation_reason="llm_exhausted"
+            )
             payload = _handoff_payload(counselor)
+            msg = (notice or HANDOFF_MESSAGE).strip()
+            if msg:
+                _save_assistant(msg)
+                if not already_streamed:
+                    for chunk in _chunk_text(msg):
+                        yield {"event": "token", "data": json.dumps({"token": chunk})}
             yield {"event": "handoff_waiting", "data": json.dumps(payload)}
-            yield {"event": "done", "data": json.dumps({**payload, "content": ""})}
+            yield {"event": "done", "data": json.dumps({**payload, "content": msg, "counselor": True})}
 
         try:
             yield {"event": "thinking", "data": json.dumps({"message": "Buscando recursos del catálogo…"})}
             full = ""
             is_counselor = False
             degraded = False
-            async for event in stream_with_fallback(messages, chat_type="digital_twin", user_id=user["id"]):
+            async for event in stream_with_fallback(
+                messages,
+                chat_type="digital_twin",
+                user_id=user["id"],
+                escalate_on_failure=True,
+            ):
                 et = event.get("type")
                 if et == "thinking":
                     yield {"event": "thinking", "data": json.dumps({"message": event.get("message", "")})}
@@ -318,22 +342,25 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                     is_counselor = bool(event.get("counselor"))
                     degraded = bool(event.get("degraded"))
 
-            # Explicit counselor provider only (crisis path uses guardrails above).
+            # LLM exhausted / explicit counselor → same pipeline as crisis/button.
             if is_counselor:
-                async for ev in _emit_handoff("El asistente solicitó escalado a bienestar"):
+                async for ev in _emit_handoff(
+                    "LLM no disponible tras varios intentos",
+                    full.strip() or HANDOFF_MESSAGE,
+                    already_streamed=bool(full.strip()),
+                ):
                     yield ev
                 return
 
             if not full.strip():
-                full = FALLBACK_MESSAGE
-                degraded = True
+                async for ev in _emit_handoff(
+                    "LLM no disponible tras varios intentos",
+                    HANDOFF_MESSAGE,
+                ):
+                    yield ev
+                return
 
-            output_check = check_output(full, "digital_twin", user_id=user["id"], already_sanitized=True)
-            if not output_check.allowed and output_check.user_message:
-                full = output_check.user_message
-            else:
-                full = output_check.sanitized_text or full
-
+            # Output already sanitized in llm_router when chat_type is set.
             _save_assistant(full.strip())
             yield {
                 "event": "done",
@@ -345,9 +372,10 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
             }
         except Exception as exc:
             logger.error("Chat stream error: %s", exc)
-            reply = FALLBACK_MESSAGE
-            _save_assistant(reply)
-            async for ev in _yield_text_as_sse(reply, {"degraded": True, "counselor": False}):
+            async for ev in _emit_handoff(
+                "Error en el servicio de chat; escalado a bienestar",
+                HANDOFF_MESSAGE,
+            ):
                 yield ev
 
     return EventSourceResponse(event_generator())
@@ -360,34 +388,17 @@ async def create_path(body: PathCreate, user: dict = Depends(require_student)):
 
 @router.get("/paths")
 async def list_paths(user: dict = Depends(require_student)):
-    sb = get_supabase()
-    paths = sb.table("learning_paths").select("*, learning_path_steps(*)").eq("user_id", user["id"]).execute()
-    return paths.data or []
+    raise HTTPException(status_code=410, detail="Rutas de aprendizaje deshabilitadas: foco en prevención de deserción")
 
 
 @router.get("/paths/{path_id}")
 async def get_path(path_id: str, user: dict = Depends(require_student)):
-    sb = get_supabase()
-    path = sb.table("learning_paths").select("*, learning_path_steps(*)").eq("id", path_id).eq("user_id", user["id"]).single().execute()
-    if not path.data:
-        raise HTTPException(status_code=404)
-    return path.data
+    raise HTTPException(status_code=410, detail="Rutas de aprendizaje deshabilitadas: foco en prevención de deserción")
 
 
 @router.patch("/paths/{path_id}/steps/{step_id}")
 async def complete_step(path_id: str, step_id: str, user: dict = Depends(require_student)):
-    sb = get_supabase()
-    path = sb.table("learning_paths").select("id").eq("id", path_id).eq("user_id", user["id"]).single().execute()
-    if not path.data:
-        raise HTTPException(status_code=404, detail="Ruta no encontrada")
-
-    step = sb.table("learning_path_steps").select("id").eq("id", step_id).eq("path_id", path_id).single().execute()
-    if not step.data:
-        raise HTTPException(status_code=404, detail="Paso no encontrado")
-
-    sb.table("learning_path_steps").update({"completed": True}).eq("id", step_id).execute()
-    sync_student_progress(sb, user["id"], user.get("institution_id"))
-    return {"completed": True}
+    raise HTTPException(status_code=410, detail="Rutas de aprendizaje deshabilitadas: foco en prevención de deserción")
 
 
 @router.post("/search")
@@ -472,6 +483,7 @@ async def create_support_request(body: SupportRequestCreate, user: dict = Depend
                 body.chat_id,
                 user["id"],
                 body.reason or "Solicitud de apoyo psicológico",
+                escalation_reason="student_request",
             )
         existing = (
             sb.table("support_requests")

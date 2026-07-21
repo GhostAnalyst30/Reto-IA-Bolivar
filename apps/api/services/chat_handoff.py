@@ -82,20 +82,39 @@ def escalate_chat_to_human(
     chat_id: str,
     user_id: str,
     reason: str | None = None,
+    *,
+    escalation_reason: str | None = None,
 ) -> dict:
-    """Activa handoff humano y vincula/actualiza support_request."""
+    """Activa handoff humano y vincula/actualiza support_request + CareQueue (idempotente)."""
     now = datetime.now(timezone.utc).isoformat()
     counselor = get_counselor_user(sb)
+    reason_text = reason or "Escalamiento a apoyo humano en chat Digital Twin"
+    # Tags: llm_exhausted | crisis | student_request | sentinel | handoff
+    tag = escalation_reason or "handoff"
+    if tag not in reason_text:
+        reason_text = f"[{tag}] {reason_text}"
 
-    sb.table("chats").update({
-        "handoff_mode": "human",
-        "handoff_at": now,
-        "updated_at": now,
-    }).eq("id", chat_id).execute()
+    chat_row = (
+        sb.table("chats")
+        .select("id, handoff_mode")
+        .eq("id", chat_id)
+        .limit(1)
+        .execute()
+    )
+    already_human = bool(chat_row.data and chat_row.data[0].get("handoff_mode") == "human")
+
+    if not already_human:
+        sb.table("chats").update({
+            "handoff_mode": "human",
+            "handoff_at": now,
+            "updated_at": now,
+        }).eq("id", chat_id).execute()
+    else:
+        sb.table("chats").update({"updated_at": now}).eq("id", chat_id).execute()
 
     existing = (
         sb.table("support_requests")
-        .select("id")
+        .select("id, reason")
         .eq("chat_id", chat_id)
         .in_("status", ["pending", "assigned"])
         .limit(1)
@@ -104,20 +123,37 @@ def escalate_chat_to_human(
     payload = {
         "status": "assigned",
         "assigned_to": counselor.get("id"),
-        "reason": reason or "Escalamiento a apoyo humano en chat Digital Twin",
+        "reason": reason_text,
     }
     if existing.data:
         sb.table("support_requests").update(payload).eq("id", existing.data[0]["id"]).execute()
         support_id = existing.data[0]["id"]
     else:
-        inserted = sb.table("support_requests").insert({
-            "user_id": user_id,
-            "chat_id": chat_id,
-            **payload,
-        }).execute()
-        support_id = (inserted.data or [{}])[0].get("id")
+        # Also reuse any open support request for this user without chat_id.
+        open_user = (
+            sb.table("support_requests")
+            .select("id")
+            .eq("user_id", user_id)
+            .in_("status", ["pending", "assigned"])
+            .is_("chat_id", "null")
+            .limit(1)
+            .execute()
+        )
+        if open_user.data:
+            sb.table("support_requests").update({
+                **payload,
+                "chat_id": chat_id,
+            }).eq("id", open_user.data[0]["id"]).execute()
+            support_id = open_user.data[0]["id"]
+        else:
+            inserted = sb.table("support_requests").insert({
+                "user_id": user_id,
+                "chat_id": chat_id,
+                **payload,
+            }).execute()
+            support_id = (inserted.data or [{}])[0].get("id")
 
-    # CareQueue ticket for counselor workflow
+    # CareQueue: upsert_ticket already merges open tickets per student (idempotent).
     try:
         from services.care_queue import upsert_ticket
         user_row = sb.table("users").select("institution_id").eq("id", user_id).limit(1).execute()
@@ -127,12 +163,13 @@ def escalate_chat_to_human(
                 institution_id=inst,
                 student_id=user_id,
                 source="handoff",
-                summary=reason or "Handoff a psicólogo humano",
+                summary=reason_text,
                 chat_id=chat_id,
                 support_request_id=support_id,
                 assigned_to=counselor.get("id"),
                 risk_level="alto",
                 risk_score=70,
+                dominant_cause=tag,
             )
     except Exception:
         pass

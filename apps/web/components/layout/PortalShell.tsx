@@ -175,10 +175,8 @@ export const STUDENT_NAV: NavItem[] = [
   { href: '/student/twin/chat', label: 'Chat Digital Twin' },
 ];
 
-export const STUDENT_NAV_LEARNING: NavItem[] = [
-  { href: '/student/programs', label: 'Programas' },
-  { href: '/student/progress', label: 'Mi progreso' },
-];
+/** @deprecated Learning paths removed from desertion-focused nav */
+export const STUDENT_NAV_LEARNING: NavItem[] = [];
 
 /** @deprecated use getInstitutionalNav from utils */
 export const INSTITUTIONAL_NAV: NavItem[] = [];

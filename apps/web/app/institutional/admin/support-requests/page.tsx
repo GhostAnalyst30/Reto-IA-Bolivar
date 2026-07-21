@@ -56,12 +56,17 @@ export default function SupportRequestsPage() {
 
   async function updateStatus(id: string, newStatus: string) {
     setUpdating(id);
-    await proxyJson(`/institutional/support-requests/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: newStatus }),
-    });
-    await load();
-    setUpdating(null);
+    try {
+      await proxyJson(`/institutional/support-requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await load();
+    } catch {
+      // Keep list; finally clears updating flag.
+    } finally {
+      setUpdating(null);
+    }
   }
 
   return (

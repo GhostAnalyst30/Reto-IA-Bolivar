@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { mutate as globalMutate } from 'swr';
 import { Button, Card, Badge, Input } from '@/components/ui';
 import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { ROLE_LABELS } from '@/lib/utils';
@@ -16,13 +17,27 @@ interface Request {
   institutions: { name: string } | null;
 }
 
+async function clearApplicantProfileCache(userId: string | undefined) {
+  if (!userId) return;
+  try {
+    await fetch('/api/internal/invalidate-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    });
+  } catch {
+    // Best-effort; middleware TTL will expire anyway.
+  }
+}
+
 export function RequestsPanel() {
-  const { data, error, isLoading, mutate } = useProxyJson<Request[]>('/admin/requests');
+  const { data, error, isLoading, mutate } = useProxyJson<Request[] | { degraded?: boolean }>('/admin/requests');
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  const degraded = Boolean(data && !Array.isArray(data) && (data as { degraded?: boolean }).degraded);
   const requests = Array.isArray(data) ? data : [];
 
   useEffect(() => {
@@ -31,12 +46,24 @@ export function RequestsPanel() {
     return () => window.removeEventListener('institution-context-changed', onChange);
   }, [mutate]);
 
+  async function refreshRelated() {
+    await mutate();
+    await Promise.all([
+      globalMutate('/platform/dashboard'),
+      globalMutate('/admin/requests'),
+    ]);
+  }
+
   async function approve(id: string) {
     setActionLoading(true);
     setActionError('');
     try {
-      await proxyJson(`/admin/requests/${id}/approve`, { method: 'POST', body: '{}' });
-      await mutate();
+      const result = await proxyJson<{ status: string; user_id?: string }>(
+        `/admin/requests/${id}/approve`,
+        { method: 'POST', body: '{}' },
+      );
+      await clearApplicantProfileCache(result?.user_id);
+      await refreshRelated();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Error al aprobar');
     } finally {
@@ -46,14 +73,19 @@ export function RequestsPanel() {
 
   async function reject(id: string) {
     setActionLoading(true);
+    setActionError('');
     try {
-      await proxyJson(`/admin/requests/${id}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ reason: reason || 'Solicitud no aprobada' }),
-      });
+      const result = await proxyJson<{ status: string; user_id?: string }>(
+        `/admin/requests/${id}/reject`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason || 'Solicitud no aprobada' }),
+        },
+      );
+      await clearApplicantProfileCache(result?.user_id);
       setRejectId(null);
       setReason('');
-      await mutate();
+      await refreshRelated();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Error al rechazar');
     } finally {
@@ -61,7 +93,10 @@ export function RequestsPanel() {
     }
   }
 
-  const displayError = actionError || error;
+  const displayError =
+    actionError ||
+    error ||
+    (degraded ? 'No se pudieron cargar las solicitudes. Intenta de nuevo.' : '');
 
   return (
     <div className="space-y-6">
@@ -70,6 +105,11 @@ export function RequestsPanel() {
       {displayError && <p className="text-sm text-red-400">{displayError}</p>}
       {isLoading ? (
         <Card><p className="text-zinc-500">Cargando solicitudes...</p></Card>
+      ) : degraded ? (
+        <Card>
+          <p className="text-zinc-500">Servicio temporalmente limitado.</p>
+          <Button className="mt-3" size="sm" onClick={() => mutate()}>Reintentar</Button>
+        </Card>
       ) : requests.length === 0 ? (
         <Card><p className="text-zinc-500">No hay solicitudes pendientes.</p></Card>
       ) : (

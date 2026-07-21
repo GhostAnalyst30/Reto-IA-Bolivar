@@ -63,18 +63,6 @@ export default function AdminResourcesPage() {
     }
   }
 
-  async function scrapeBiblioteca() {
-    setLoading(true);
-    try {
-      await proxyJson('/admin/scraper/run?target=utb_biblioteca', { method: 'POST' });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al indexar');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function remove(id: string) {
     if (!confirm('¿Eliminar este recurso?')) return;
     await proxyJson(`/admin/resources/${id}`, { method: 'DELETE' });
@@ -97,9 +85,6 @@ export default function AdminResourcesPage() {
           <h1 className="font-display text-2xl font-bold">Recursos y apoyo</h1>
           <p className="text-muted">Los estudiantes ven y acceden a estos recursos</p>
         </div>
-        <Button variant="secondary" onClick={scrapeBiblioteca} disabled={loading}>
-          Indexar Biblioteca UTB
-        </Button>
       </div>
 
       <PortalCard>

@@ -214,6 +214,7 @@ def run_sentinel(institution_id: str = UTB_INSTITUTION_ID, limit: int = 80) -> d
                 escalate_chat_to_human(
                     sb, chat_id, user_id,
                     reason=f"Sentinel automático: trayectoria crítica ({reason_key})",
+                    escalation_reason="sentinel",
                 )
                 escalated += 1
             except Exception:
