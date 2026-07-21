@@ -34,7 +34,8 @@ function isSoftReadPath(path: string): boolean {
     base === '/institutional/risk/students' ||
     base === '/institutional/care-queue' ||
     base === '/institutional/prediction/ml' ||
-    base === '/institutional/impact'
+    base === '/institutional/impact' ||
+    base === '/institutional/executive-brief'
   );
 }
 

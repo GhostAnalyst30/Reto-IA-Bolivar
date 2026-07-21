@@ -12,6 +12,27 @@ interface Resource {
   url?: string;
 }
 
+function toYoutubeEmbed(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.includes('/embed/')) return url;
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtu.be')) {
+      const id = u.pathname.replace('/', '');
+      return id ? `https://www.youtube.com/embed/${id}` : url;
+    }
+    if (u.hostname.includes('youtube.com')) {
+      const id = u.searchParams.get('v');
+      if (id) return `https://www.youtube.com/embed/${id}`;
+      const shorts = u.pathname.match(/\/shorts\/([^/]+)/);
+      if (shorts?.[1]) return `https://www.youtube.com/embed/${shorts[1]}`;
+    }
+  } catch {
+    // keep raw
+  }
+  return url;
+}
+
 export default function VideoPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -28,7 +49,7 @@ export default function VideoPage() {
 
   if (!resource) return <p className="text-zinc-500">Cargando video...</p>;
 
-  const embedUrl = resource.url?.includes('embed') ? resource.url : resource.url;
+  const embedUrl = toYoutubeEmbed(resource.url);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -44,6 +65,11 @@ export default function VideoPage() {
             allowFullScreen
           />
         </div>
+      )}
+      {resource.url && (
+        <a href={resource.url} target="_blank" rel="noopener noreferrer">
+          <Button size="sm" variant="secondary">Abrir en YouTube</Button>
+        </a>
       )}
       {resource.description && (
         <Card><p className="text-zinc-400">{resource.description}</p></Card>

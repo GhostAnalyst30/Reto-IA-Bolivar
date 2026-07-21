@@ -157,7 +157,7 @@ async def platform_update_user(
     if body.status and body.status not in ("pending", "approved", "rejected", "suspended"):
         raise HTTPException(status_code=400, detail="Estado inválido")
     if body.role and body.role not in (
-        "student", "area_head", "dean", "vice_president", "rector", "admin", "platform_admin"
+        "student", "admin", "psychologist", "platform_admin"
     ):
         raise HTTPException(status_code=400, detail="Rol inválido")
 

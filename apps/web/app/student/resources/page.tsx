@@ -166,9 +166,16 @@ export default function ResourcesPage() {
                 <p className="text-xs text-brand-amber">{r.topic}</p>
                 <p className="text-sm text-zinc-500 mt-1">{r.description}</p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => toggle(r.id)}>
-                {saved.has(r.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
-              </Button>
+              <div className="flex gap-2 shrink-0">
+                {r.url && (
+                  <a href={r.url} target="_blank" rel="noopener noreferrer" aria-label="Abrir recurso">
+                    <ExternalLink className="h-4 w-4 text-brand-amber" />
+                  </a>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => toggle(r.id)}>
+                  {saved.has(r.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+                </Button>
+              </div>
             </Card>
           ))}
         </div>

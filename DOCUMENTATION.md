@@ -32,7 +32,15 @@ API en el puerto 8000; web en el 3000.
 
 ## Chat e IA
 
-El chat del Digital Twin prueba varios modelos gratis en cadena. Si no obtiene respuesta, escala el hilo a un psicólogo humano (mismo chat e inbox institucional). También se puede pedir apoyo humano manualmente o por señales de crisis.
+El chat del Digital Twin prueba modelos vía **LangChain** (OpenRouter → Hugging Face) con trazas opcionales en **LangSmith**. Si no obtiene respuesta, escala el hilo a un psicólogo humano (mismo chat e inbox institucional). También se puede pedir apoyo humano manualmente o por señales de crisis.
+
+Staff (admin, psicólogo, platform admin) usa chat institucional en modo privilegiado (consulta libre de datos del sistema) con escalación humana. El resumen ejecutivo genera mensajes situacionales al entrar al módulo (LangChain + plantillas de respaldo).
+
+Variables relevantes: `OPENROUTER_API_KEY`, `HUGGINGFACE_API_KEY`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`, `LLM_PROVIDER_ORDER`.
+
+## Roles
+
+Cuatro roles: `student`, `admin`, `psychologist`, `platform_admin`. Claves de rol y seguridad solo para platform admin.
 
 ## Deploy
 

@@ -3,11 +3,11 @@ from pydantic_settings import BaseSettings
 
 
 DEFAULT_OPENROUTER_FREE_MODELS = (
-    "meta-llama/llama-3.2-3b-instruct:free,"
-    "google/gemma-3-27b-it:free,"
-    "qwen/qwen-2.5-7b-instruct:free,"
-    "google/gemini-2.0-flash-exp:free,"
-    "mistralai/mistral-7b-instruct:free"
+    "google/gemma-4-31b-it:free,"
+    "openai/gpt-oss-20b:free,"
+    "nvidia/nemotron-nano-9b-v2:free,"
+    "google/gemma-4-26b-a4b-it:free,"
+    "openrouter/free"
 )
 
 
@@ -17,15 +17,18 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model_tutor: str = "meta-llama/llama-3.2-3b-instruct:free"
-    llm_model_director: str = "meta-llama/llama-3.2-3b-instruct:free"
-    llm_model_path: str = "meta-llama/llama-3.2-3b-instruct:free"
+    llm_model_tutor: str = "google/gemma-4-31b-it:free"
+    llm_model_director: str = "google/gemma-4-31b-it:free"
+    llm_model_path: str = "openai/gpt-oss-20b:free"
     # CSV of free OpenRouter model IDs tried in order (max llm_max_openrouter_attempts).
     llm_openrouter_free_models: str = DEFAULT_OPENROUTER_FREE_MODELS
     llm_max_openrouter_attempts: int = 5
     llm_provider: str = "openrouter"
+    # CSV order for LangChain provider cascade (openrouter, huggingface).
+    llm_provider_order: str = "openrouter,huggingface"
     gemini_api_key: str = ""
     huggingface_api_key: str = ""
+    huggingface_model: str = "HuggingFaceH4/zephyr-7b-beta"
     litellm_api_base: str = ""
     litellm_api_key: str = ""
     youtube_api_key: str = ""
@@ -41,6 +44,11 @@ class Settings(BaseSettings):
     chat_rate_limit_per_minute: int = 30
     guardrails_redact_input_pii: bool = True
     guardrails_block_third_party_pii: bool = True
+    # LangSmith / LangChain tracing
+    langchain_tracing_v2: bool = False
+    langchain_api_key: str = ""
+    langchain_project: str = "utb-te-acompana"
+    llm_http_timeout_s: float = 25.0
 
     class Config:
         env_file = ".env"
@@ -62,6 +70,24 @@ class Settings(BaseSettings):
                 ordered.append(model)
         max_n = max(1, int(self.llm_max_openrouter_attempts or 5))
         return ordered[:max_n]
+
+    def provider_order_list(self) -> list[str]:
+        return [
+            p.strip().lower()
+            for p in (self.llm_provider_order or "openrouter,huggingface").split(",")
+            if p.strip()
+        ]
+
+    def configure_langsmith(self) -> None:
+        """Enable LangSmith tracing when API key is present."""
+        import os
+        if self.langchain_api_key:
+            os.environ.setdefault("LANGCHAIN_API_KEY", self.langchain_api_key)
+        if self.langchain_tracing_v2 and self.langchain_api_key:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ.setdefault("LANGCHAIN_PROJECT", self.langchain_project or "utb-te-acompana")
+        elif not self.langchain_tracing_v2:
+            os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
 
 settings = Settings()

@@ -8,7 +8,7 @@ from typing import Literal
 from core.config import settings
 from core.security_monitor import log_security_event
 
-ChatType = Literal["digital_twin", "institutional"]
+ChatType = Literal["digital_twin", "institutional", "privileged"]
 GuardrailAction = Literal["pass", "block", "redirect", "handoff", "sanitize"]
 
 SAFE_FALLBACK = (
@@ -231,6 +231,7 @@ def check_input(
     *,
     history: list[str] | None = None,
     user_id: str | None = None,
+    role: str | None = None,
 ) -> GuardrailResult:
     if not settings.guardrails_enabled:
         return GuardrailResult(action="pass", redacted_input=text)
@@ -273,6 +274,7 @@ def check_input(
             severity="high",
         )
 
+    # Privileged staff (admin / psychologist / platform) may ask about system data.
     if chat_type == "institutional" and _matches_any(stripped, _PII_REQUEST_PATTERNS):
         _log_guardrail("pii_exposure_attempt", "high", user_id, chat_type, ["pii_request"], ["cedula", "email"])
         return GuardrailResult(
@@ -283,7 +285,11 @@ def check_input(
             severity="high",
         )
 
-    if settings.guardrails_block_third_party_pii and contains_third_party_pii(stripped):
+    if (
+        chat_type != "privileged"
+        and settings.guardrails_block_third_party_pii
+        and contains_third_party_pii(stripped)
+    ):
         _log_guardrail(
             "pii_exposure_attempt",
             "high",
@@ -321,7 +327,8 @@ def check_input(
 
     redacted_input = stripped
     privacy_notice = None
-    entities = detect_sensitive_entities(stripped)
+    # Do not aggressively redact numeric KPIs for privileged chats
+    entities = detect_sensitive_entities(stripped) if chat_type != "privileged" else []
     if entities and settings.guardrails_redact_input_pii:
         redacted_input = redact_sensitive_text(stripped)
         if redacted_input != stripped:
@@ -330,12 +337,13 @@ def check_input(
                 allowed=True,
                 action="sanitize",
                 redacted_input=redacted_input,
+                sanitized_text=redacted_input,
                 flags=["pii_input_redacted"],
                 severity="medium",
                 privacy_notice=privacy_notice,
             )
 
-    return GuardrailResult(action="pass", redacted_input=redacted_input)
+    return GuardrailResult(action="pass", redacted_input=redacted_input, sanitized_text=stripped)
 
 
 def _sanitize_urls(text: str) -> str:
@@ -387,7 +395,7 @@ def check_output(
                     severity="high",
                 )
 
-    entities = detect_sensitive_entities(out)
+    entities = detect_sensitive_entities(out) if chat_type != "privileged" else []
     if entities:
         out = redact_sensitive_text(out)
         flags.append("pii_output")

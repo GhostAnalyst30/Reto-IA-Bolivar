@@ -27,7 +27,7 @@ CREATE TABLE users (
   email TEXT NOT NULL,
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'student' CHECK (role IN (
-    'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin', 'platform_admin'
+    'student', 'admin', 'psychologist', 'platform_admin'
   )),
   institution_id UUID REFERENCES institutions(id),
   faculty_id UUID REFERENCES faculties(id),
@@ -169,7 +169,7 @@ CREATE TABLE student_progress (
 CREATE TABLE role_auth_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   institution_id UUID NOT NULL REFERENCES institutions(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('area_head', 'dean', 'vice_president', 'rector', 'admin')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'psychologist')),
   key_hash TEXT NOT NULL,
   label TEXT,
   max_uses INT DEFAULT 1,
@@ -185,7 +185,7 @@ CREATE TABLE registration_requests (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   institution_id UUID REFERENCES institutions(id),
   requested_role TEXT NOT NULL CHECK (requested_role IN (
-    'student', 'area_head', 'dean', 'vice_president', 'rector', 'admin'
+    'student', 'admin', 'psychologist'
   )),
   status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
   auth_key_id UUID REFERENCES role_auth_keys(id),

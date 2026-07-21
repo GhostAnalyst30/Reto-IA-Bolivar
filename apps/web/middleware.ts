@@ -131,9 +131,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(getDefaultPath(profile.role), request.url));
   }
 
+  // Auth keys + security: platform_admin only
+  if (
+    (path.startsWith('/institutional/admin/auth-keys')
+      || path.startsWith('/institutional/admin/security'))
+    && !isPlatformAdmin
+  ) {
+    return NextResponse.redirect(new URL('/institutional/dashboard', request.url));
+  }
+
+  // Admin modules: admin + psychologist (+ platform)
   if (
     path.startsWith('/institutional/admin')
     && profile.role !== 'admin'
+    && profile.role !== 'psychologist'
     && !isPlatformAdmin
   ) {
     return NextResponse.redirect(new URL('/institutional/dashboard', request.url));

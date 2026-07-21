@@ -11,7 +11,7 @@ from core.security import invalidate_user_cache
 from core.cache import platform_cache
 from routes.deps import (
     require_admin,
-    require_institutional,
+    require_platform_admin,
     is_platform_admin,
     effective_institution_id,
     is_institution_admin,
@@ -39,9 +39,14 @@ class AuthKeyCreate(BaseModel):
     expires_at: str | None = None
 
 
+class ApproveBatchBody(BaseModel):
+    ids: list[str] | None = None
+    all_pending: bool = False
+
+
 @router.get("/requests")
 async def list_requests(
-    admin: dict = Depends(require_institutional),
+    admin: dict = Depends(require_admin),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -57,9 +62,7 @@ async def list_requests(
     return result.data or []
 
 
-@router.post("/requests/{request_id}/approve")
-async def approve_request(request_id: str, admin: dict = Depends(require_institutional)):
-    sb = get_supabase()
+async def _approve_one(sb, request_id: str, admin: dict) -> dict:
     req = sb.table("registration_requests").select("*").eq("id", request_id).single().execute()
     if not req.data or req.data["status"] != "pending":
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -68,17 +71,20 @@ async def approve_request(request_id: str, admin: dict = Depends(require_institu
     if admin.get("institution_id") and not is_platform_admin(admin):
         if data.get("institution_id") != admin["institution_id"]:
             raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
-    elif is_platform_admin(admin) and admin.get("institution_id") is None:
-        pass  # platform admin global
 
     if not data.get("institution_id"):
         raise HTTPException(status_code=400, detail="La solicitud no tiene institución asignada")
+
+    # Normalize legacy requested roles
+    role = data["requested_role"]
+    if role in ("area_head", "dean", "vice_president", "rector"):
+        role = "admin"
 
     now = datetime.now(timezone.utc).isoformat()
 
     user_update = sb.table("users").update({
         "status": "approved",
-        "role": data["requested_role"],
+        "role": role,
         "institution_id": data["institution_id"],
         "updated_at": now,
     }).eq("id", data["user_id"]).select("id, status").execute()
@@ -103,29 +109,70 @@ async def approve_request(request_id: str, admin: dict = Depends(require_institu
         await notify_account_approved(
             user_row.data["email"],
             user_row.data.get("full_name") or user_row.data["email"].split("@")[0],
-            data["requested_role"],
+            role,
         )
 
     invalidate_user_cache(data["user_id"])
+    return {"status": "approved", "user_id": data["user_id"], "request_id": request_id}
+
+
+@router.post("/requests/approve-batch")
+async def approve_requests_batch(body: ApproveBatchBody, admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    ids = list(body.ids or [])
+    if body.all_pending:
+        query = sb.table("registration_requests").select("id").eq("status", "pending")
+        inst = effective_institution_id(admin)
+        if inst and not is_platform_admin(admin):
+            query = query.eq("institution_id", inst)
+        elif admin.get("institution_id") and not is_platform_admin(admin):
+            query = query.eq("institution_id", admin["institution_id"])
+        ids = [r["id"] for r in (query.execute().data or [])]
+
+    if not ids:
+        return {"approved": [], "failed": [], "count": 0}
+
+    approved: list[dict] = []
+    failed: list[dict] = []
+    for rid in ids:
+        try:
+            approved.append(await _approve_one(sb, rid, admin))
+        except HTTPException as exc:
+            failed.append({"id": rid, "detail": exc.detail})
+        except Exception as exc:
+            failed.append({"id": rid, "detail": str(exc)})
+
     platform_cache.invalidate("dashboard")
-    return {"status": "approved", "user_id": data["user_id"]}
+    return {"approved": approved, "failed": failed, "count": len(approved)}
+
+
+@router.post("/requests/{request_id}/approve")
+async def approve_request(request_id: str, admin: dict = Depends(require_admin)):
+    sb = get_supabase()
+    result = await _approve_one(sb, request_id, admin)
+    platform_cache.invalidate("dashboard")
+    return result
 
 
 @router.post("/requests/{request_id}/reject")
-async def reject_request(request_id: str, body: RejectBody, admin: dict = Depends(require_institutional)):
+async def reject_request(request_id: str, body: RejectBody, admin: dict = Depends(require_admin)):
     sb = get_supabase()
     req = sb.table("registration_requests").select("*").eq("id", request_id).single().execute()
     if not req.data or req.data["status"] != "pending":
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
 
+    data = req.data
     if admin.get("institution_id") and not is_platform_admin(admin):
-        if req.data.get("institution_id") != admin["institution_id"]:
+        if data.get("institution_id") != admin["institution_id"]:
             raise HTTPException(status_code=403, detail="Solicitud fuera de su institución")
 
     now = datetime.now(timezone.utc).isoformat()
-    user_id = req.data["user_id"]
-    user_update = sb.table("users").update({"status": "rejected", "updated_at": now}).eq("id", user_id).select("id, status").execute()
+    user_update = sb.table("users").update({
+        "status": "rejected",
+        "updated_at": now,
+    }).eq("id", data["user_id"]).select("id, status").execute()
     require_updated(user_update, "usuario")
+
     req_update = sb.table("registration_requests").update({
         "status": "rejected",
         "rejection_reason": body.reason,
@@ -134,7 +181,7 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
     }).eq("id", request_id).select("id, status").execute()
     require_updated(req_update, "solicitud")
 
-    user_row = sb.table("users").select("email, full_name").eq("id", user_id).single().execute()
+    user_row = sb.table("users").select("email, full_name").eq("id", data["user_id"]).single().execute()
     if user_row.data and user_row.data.get("email"):
         await notify_account_rejected(
             user_row.data["email"],
@@ -142,13 +189,14 @@ async def reject_request(request_id: str, body: RejectBody, admin: dict = Depend
             body.reason,
         )
 
-    invalidate_user_cache(user_id)
+    invalidate_user_cache(data["user_id"])
     platform_cache.invalidate("dashboard")
-    return {"status": "rejected", "user_id": user_id}
+    return {"status": "rejected", "user_id": data["user_id"]}
+
 
 @router.get("/auth-keys")
 async def list_auth_keys(
-    admin: dict = Depends(require_admin),
+    admin: dict = Depends(require_platform_admin),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -158,20 +206,14 @@ async def list_auth_keys(
     inst = effective_institution_id(admin, institution_id)
     if inst:
         query = query.eq("institution_id", inst)
-    elif admin.get("institution_id") and not is_platform_admin(admin):
-        query = query.eq("institution_id", admin["institution_id"])
     result = query.order("created_at", desc=True).execute()
     return result.data or []
 
 
 @router.post("/auth-keys")
-async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_admin)):
-    if body.role not in ("area_head", "dean", "vice_president", "rector", "admin"):
+async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_platform_admin)):
+    if body.role not in ("admin", "psychologist"):
         raise HTTPException(status_code=400, detail="Rol inválido")
-
-    if is_institution_admin(admin) and admin.get("institution_id"):
-        if body.institution_id != admin["institution_id"]:
-            raise HTTPException(status_code=403, detail="No puede crear claves para otra institución")
 
     plain_key = f"BOL-{body.role.upper()[:3]}-{secrets.token_urlsafe(8).upper()}"
     sb = get_supabase()
@@ -189,37 +231,27 @@ async def create_auth_key(body: AuthKeyCreate, admin: dict = Depends(require_adm
 
 
 @router.delete("/auth-keys/{key_id}")
-async def revoke_auth_key(key_id: str, admin: dict = Depends(require_admin)):
+async def revoke_auth_key(key_id: str, admin: dict = Depends(require_platform_admin)):
     sb = get_supabase()
     key = sb.table("role_auth_keys").select("id, institution_id").eq("id", key_id).single().execute()
     if not key.data:
         raise HTTPException(status_code=404, detail="Clave no encontrada")
-    scope = _admin_scope_institution(admin)
-    if scope is not None and key.data.get("institution_id") != scope:
-        raise HTTPException(status_code=403, detail="Clave fuera de su institución")
     now = datetime.now(timezone.utc).isoformat()
     sb.table("role_auth_keys").update({"revoked_at": now}).eq("id", key_id).execute()
     return {"status": "revoked"}
 
 
 @router.get("/security-events")
-async def list_security_events(admin: dict = Depends(require_admin)):
+async def list_security_events(admin: dict = Depends(require_platform_admin)):
     sb = get_supabase()
     query = sb.table("security_events").select("*")
-    scope = _admin_scope_institution(admin)
-    if scope is not None:
-        inst_users = sb.table("users").select("id").eq("institution_id", scope).execute()
-        user_ids = [u["id"] for u in inst_users.data or []]
-        if not user_ids:
-            return []
-        query = query.in_("user_id", user_ids)
     result = query.order("created_at", desc=True).limit(100).execute()
     return result.data or []
 
 
 @router.get("/sessions")
 async def list_sessions(
-    admin: dict = Depends(require_admin),
+    admin: dict = Depends(require_platform_admin),
     institution_id: str | None = Query(None),
 ):
     sb = get_supabase()
@@ -228,34 +260,21 @@ async def list_sessions(
     ).eq("is_active", True)
     inst = effective_institution_id(admin, institution_id)
     if inst:
-        inst_users = sb.table("users").select("id").eq("institution_id", inst).execute()
-        user_ids = [u["id"] for u in inst_users.data or []]
-        if user_ids:
-            query = query.in_("user_id", user_ids)
-        else:
+        users = sb.table("users").select("id").eq("institution_id", inst).execute()
+        user_ids = [u["id"] for u in users.data or []]
+        if not user_ids:
             return []
-    elif admin.get("institution_id") and not is_platform_admin(admin):
-        inst_users = sb.table("users").select("id").eq("institution_id", admin["institution_id"]).execute()
-        user_ids = [u["id"] for u in inst_users.data or []]
-        if user_ids:
-            query = query.in_("user_id", user_ids)
-        else:
-            return []
-    result = query.execute()
+        query = query.in_("user_id", user_ids)
+    result = query.order("last_seen_at", desc=True).limit(100).execute()
     return result.data or []
 
 
 @router.post("/sessions/{session_id}/revoke")
-async def revoke_session(session_id: str, admin: dict = Depends(require_admin)):
+async def revoke_session(session_id: str, admin: dict = Depends(require_platform_admin)):
     sb = get_supabase()
     session = sb.table("user_sessions").select("id, user_id").eq("id", session_id).single().execute()
     if not session.data:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
-    scope = _admin_scope_institution(admin)
-    if scope is not None:
-        owner = sb.table("users").select("institution_id").eq("id", session.data["user_id"]).single().execute()
-        if not owner.data or owner.data.get("institution_id") != scope:
-            raise HTTPException(status_code=403, detail="Sesión fuera de su institución")
     now = datetime.now(timezone.utc).isoformat()
     sb.table("user_sessions").update({
         "is_active": False,

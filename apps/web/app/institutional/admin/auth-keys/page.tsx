@@ -22,7 +22,7 @@ interface AuthKey {
 export default function AuthKeysPage() {
   const [keys, setKeys] = useState<AuthKey[]>([]);
   const [newKey, setNewKey] = useState('');
-  const [role, setRole] = useState('dean');
+  const [role, setRole] = useState('admin');
   const [institutionId, setInstitutionId] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -94,7 +94,7 @@ export default function AuthKeysPage() {
           <div>
             <Label>Rol</Label>
             <Select value={role} onChange={(e) => setRole(e.target.value)}>
-              {['area_head', 'dean', 'vice_president', 'rector', 'admin'].map((r) => (
+              {['admin', 'psychologist'].map((r) => (
                 <option key={r} value={r}>{ROLE_LABELS[r]}</option>
               ))}
             </Select>

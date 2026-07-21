@@ -427,9 +427,10 @@ async def search(body: SearchQuery, user: dict = Depends(require_student)):
 @router.get("/self-help")
 async def self_help_resources(user: dict = Depends(require_student), topic: str = Query("bienestar")):
     sb = get_supabase()
+    # Match seed categories: bienestar / autoayuda (legacy filter used "wellbeing")
     query = sb.table("resources").select(
         "id, title, description, topic, url, resource_type, category"
-    ).eq("category", "wellbeing")
+    ).in_("category", ["wellbeing", "bienestar", "autoayuda"])
     if user.get("institution_id"):
         query = query.eq("institution_id", user["institution_id"])
     rows = query.limit(20).execute().data or []
@@ -445,7 +446,11 @@ async def self_help_resources(user: dict = Depends(require_student), topic: str 
     needle = (topic or "bienestar").lower()
     return [
         r for r in data
-        if needle in (r.get("title") or "").lower() or needle in (r.get("topic") or "").lower()
+        if needle in (r.get("title") or "").lower()
+        or needle in (r.get("topic") or "").lower()
+        or needle in (r.get("category") or "").lower()
+        or "bienestar" in (r.get("category") or "").lower()
+        or "autoayuda" in (r.get("category") or "").lower()
     ][:10]
 
 

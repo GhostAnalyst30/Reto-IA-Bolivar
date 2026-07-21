@@ -15,27 +15,44 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 SUPABASE = ROOT / "supabase"
-MIGRATIONS = [
+
+# Base schema (fresh installs). On existing DBs, already-exists errors are skipped.
+BASE_MIGRATIONS = [
     SUPABASE / "001_schema.sql",
     SUPABASE / "002_rls.sql",
     SUPABASE / "003_seed_utb.sql",
 ]
-PATCHES = {
-    "014": SUPABASE / "014_messages_counselor_role.sql",
-    "013": SUPABASE / "013_platform_dashboard_roles.sql",
-    "012": SUPABASE / "012_dropout_enhancements.sql",
-    "011": SUPABASE / "011_align_metrics.sql",
-    "010": SUPABASE / "010_users_management.sql",
-    "009": SUPABASE / "009_performance_indexes.sql",
-    "008": SUPABASE / "008_allow_exception_email.sql",
-    "007": SUPABASE / "007_drop_username.sql",
-    "004": SUPABASE / "004_seed_platform_admin.sql",
-}
+
+# Incremental patches in order (004–018)
+INCREMENTAL = [
+    SUPABASE / "004_seed_platform_admin.sql",
+    SUPABASE / "007_drop_username.sql",
+    SUPABASE / "008_allow_exception_email.sql",
+    SUPABASE / "009_performance_indexes.sql",
+    SUPABASE / "010_users_management.sql",
+    SUPABASE / "011_align_metrics.sql",
+    SUPABASE / "012_dropout_enhancements.sql",
+    SUPABASE / "013_platform_dashboard_roles.sql",
+    SUPABASE / "014_messages_counselor_role.sql",
+    SUPABASE / "015_chat_human_handoff.sql",
+    SUPABASE / "016_chat_performance_indexes.sql",
+    SUPABASE / "017_retention_os.sql",
+    SUPABASE / "018_four_roles.sql",
+]
+
+PATCHES = {p.stem.split("_", 1)[0]: p for p in INCREMENTAL}
+
 RESET = SUPABASE / "000_reset.sql"
 DEMO_SEED = SUPABASE / "005_seed_demo_utb.sql"
 DEMO_ACCOMPANIMENT = SUPABASE / "006_seed_accompaniment_utb.sql"
 
 PROJECT_REF = "vecvvcryqhgrtulnqnxq"
+
+SKIP_HINTS = (
+    "already exists",
+    "duplicate",
+    "does not exist",  # DROP IF missing / legacy cleanup
+)
 
 
 def get_connection_string() -> str:
@@ -59,12 +76,23 @@ def get_connection_string() -> str:
     return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
 
 
-def run_sql_file(conn, path: Path):
+def run_sql_file(conn, path: Path, *, allow_skip: bool = True) -> str:
     sql = path.read_text(encoding="utf-8")
     print(f"  >> {path.name}...", end=" ", flush=True)
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    print("OK")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        print("OK")
+        return "ok"
+    except psycopg2.Error as e:
+        err = str(e).strip()
+        if allow_skip and any(h in err.lower() for h in SKIP_HINTS):
+            print(f"SKIP ({err.splitlines()[0][:80]})")
+            conn.rollback()
+            # Autocommit mode: rollback may be no-op; reconnect cursor state
+            return "skip"
+        print(f"\n  ✗ Error en {path.name}:\n{err}")
+        raise
 
 
 def main():
@@ -74,12 +102,17 @@ def main():
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="Ejecutar seeds demo UTB (005 + 006) tras migraciones base",
+        help="Ejecutar seeds demo UTB (005 + 006) tras migraciones",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Ejecutar base + todos los parches incrementales (004–018)",
     )
     parser.add_argument(
         "--patch",
         metavar="ID",
-        help="Ejecutar un parche incremental (ej: 009 para índices de rendimiento)",
+        help="Ejecutar un parche incremental (ej: 018)",
     )
     args = parser.parse_args()
 
@@ -104,30 +137,33 @@ def main():
 
     try:
         if args.patch:
-            patch_path = PATCHES.get(args.patch)
+            patch_path = PATCHES.get(args.patch) or PATCHES.get(args.patch.zfill(3))
             if not patch_path:
-                print(f"Parche desconocido: {args.patch}. Disponibles: {', '.join(PATCHES)}")
+                print(f"Parche desconocido: {args.patch}. Disponibles: {', '.join(sorted(PATCHES))}")
                 sys.exit(1)
             print(f"\nEjecutando parche {args.patch}:")
-            run_sql_file(conn, patch_path)
+            try:
+                run_sql_file(conn, patch_path, allow_skip=False)
+            except psycopg2.Error:
+                sys.exit(1)
         else:
-            files = ([RESET] if args.reset else []) + MIGRATIONS
+            files = []
+            if args.reset:
+                files.append(RESET)
+            # Default and --all: apply base + all incrementals on existing/prod-safe path
+            files.extend(BASE_MIGRATIONS)
+            files.extend(INCREMENTAL)
             if args.demo:
                 files += [DEMO_SEED, DEMO_ACCOMPANIMENT]
-            print("\nEjecutando scripts SQL:")
+            print("\nEjecutando scripts SQL (base + incrementales):")
             for path in files:
                 if not path.exists():
                     print(f"  ✗ No encontrado: {path}")
                     sys.exit(1)
                 try:
                     run_sql_file(conn, path)
-                except psycopg2.Error as e:
-                    err = str(e).strip()
-                    if "already exists" in err or "duplicate" in err.lower():
-                        print(f"SKIP (ya existe)")
-                    else:
-                        print(f"\n  ✗ Error en {path.name}:\n{err}")
-                        sys.exit(1)
+                except psycopg2.Error:
+                    sys.exit(1)
 
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM institutions")
@@ -136,12 +172,23 @@ def main():
             res = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM opportunities")
             opportunities = cur.fetchone()[0]
+            cur.execute(
+                """
+                SELECT conname, pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'users'::regclass AND contype = 'c' AND conname LIKE '%role%'
+                """
+            )
+            role_checks = cur.fetchall()
+            cur.execute(
+                "SELECT DISTINCT role FROM users ORDER BY 1"
+            )
+            roles = [r[0] for r in cur.fetchall()]
 
         print(f"\nOK Completado — instituciones: {inst}, recursos: {res}, oportunidades: {opportunities}")
-        print("\nSiguiente paso:")
-        print("  1. SEED_DEMO_PASSWORD=Immanuel3008 npx tsx scripts/seed-platform-admin.ts")
-        print("  2. Ejecutar supabase/004_seed_platform_admin.sql en SQL Editor")
-        print("  3. (opcional demo) python scripts/run_migrations.py --demo")
+        print(f"Roles presentes: {roles}")
+        for name, definition in role_checks:
+            print(f"Constraint {name}: {definition}")
     finally:
         conn.close()
 

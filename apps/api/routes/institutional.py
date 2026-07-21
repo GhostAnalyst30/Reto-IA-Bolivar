@@ -9,7 +9,9 @@ from core.parallel import run_parallel
 from core.username import is_utb_email
 from core.email_notify import notify_account_approved
 from core.rate_limit import check_rate_limit
-from routes.deps import require_institutional, effective_institution_id, is_platform_admin
+from routes.deps import require_institutional, require_admin, effective_institution_id, is_platform_admin
+from agents.executive_brief_agent import generate_executive_messages, template_messages
+from services.care_queue import list_queue
 from agents.institutional_chat_agent import institutional_chat_reply, parse_chart_from_response
 from services.llm_guardrails import check_input, check_output
 from core.tasks import get_job, run_in_background
@@ -26,7 +28,7 @@ from services.risk_queue import enqueue_risk_recompute
 router = APIRouter(prefix="/institutional", tags=["institutional"])
 logger = logging.getLogger(__name__)
 
-CREATABLE_ROLES = frozenset({"student", "area_head", "dean", "vice_president", "rector", "admin"})
+CREATABLE_ROLES = frozenset({"student", "admin", "psychologist"})
 
 INSTITUTIONAL_CHAT_FALLBACK = (
     "El asistente institucional está en modo limitado. "
@@ -199,7 +201,7 @@ async def list_institution_users(
 @router.post("/users", status_code=201)
 async def create_institution_user(
     body: InstitutionUserCreate,
-    user: dict = Depends(require_institutional),
+    user: dict = Depends(require_admin),
     institution_id: str | None = Query(None),
 ):
     inst = effective_institution_id(user, institution_id)
@@ -669,28 +671,65 @@ async def upsert_academic_outcome(
     return result.data[0] if result.data else row
 
 
-@router.post("/director/chat")
-async def director_chat(
+@router.get("/executive-brief")
+async def executive_brief(
     user: dict = Depends(require_institutional),
     institution_id: str | None = Query(None),
 ):
-    """Executive insights for resumen ejecutivo — soft-degrades instead of 410/503."""
+    """Situational messages for resumen ejecutivo — LangChain with template fallback."""
     dashboard = _safe_dashboard(user, institution_id)
     kpis = dashboard.get("kpis") or []
     charts = dashboard.get("charts") or {}
-    prompt = (
-        "Genera un resumen ejecutivo breve (máximo 120 palabras) sobre retención estudiantil, "
-        "riesgo de deserción y acciones prioritarias a partir de los KPIs institucionales."
-    )
+    inst = effective_institution_id(user, institution_id)
+    extra: dict = {}
     try:
-        raw = await institutional_chat_reply(prompt, [], kpis, charts)
-        text, _ = parse_chart_from_response(raw or "")
-        insights = (text or "").strip() or DIRECTOR_INSIGHTS_FALLBACK
-        degraded = bool(dashboard.get("degraded")) or insights == DIRECTOR_INSIGHTS_FALLBACK
-        return {"insights": insights, "degraded": degraded, "provider": "fallback" if degraded else "llm"}
+        if inst:
+            queue = list_queue(inst, include_resolved=False, limit=50)
+            extra["care_queue_open"] = len(queue or [])
+        sb = get_supabase()
+        q = sb.table("registration_requests").select("id").eq("status", "pending")
+        if inst:
+            q = q.eq("institution_id", inst)
+        pending = q.execute()
+        extra["pending_requests"] = len(pending.data or [])
     except Exception as exc:
-        logger.error("Director chat failed: %s", exc)
-        return {"insights": DIRECTOR_INSIGHTS_FALLBACK, "degraded": True, "provider": "fallback"}
+        logger.warning("executive brief extra metrics failed: %s", exc)
+
+    try:
+        messages, provider, degraded = await generate_executive_messages(
+            kpis, charts, extra=extra, user_id=user.get("id"),
+        )
+        if not messages:
+            messages = template_messages(kpis, charts, extra)
+            provider, degraded = "template", True
+        return {
+            "messages": messages,
+            "provider": provider,
+            "degraded": bool(dashboard.get("degraded")) or degraded,
+            "kpis": kpis,
+            "charts": charts,
+        }
+    except Exception as exc:
+        logger.error("Executive brief failed: %s", exc)
+        return {
+            "messages": template_messages(kpis, charts, extra),
+            "provider": "template",
+            "degraded": True,
+            "kpis": kpis,
+            "charts": charts,
+        }
+
+
+@router.post("/director/chat")
+async def director_chat_legacy(
+    user: dict = Depends(require_institutional),
+    institution_id: str | None = Query(None),
+):
+    """Deprecated — redirects to executive brief messages as single insight text."""
+    brief = await executive_brief(user=user, institution_id=institution_id)
+    msgs = brief.get("messages") or []
+    insights = " ".join(f"{m.get('title')}: {m.get('body')}" for m in msgs[:3]) or DIRECTOR_INSIGHTS_FALLBACK
+    return {"insights": insights, "degraded": brief.get("degraded", True), "provider": brief.get("provider")}
 
 
 @router.post("/chat")
@@ -700,20 +739,47 @@ async def institutional_chat(
     institution_id: str | None = Query(None),
 ):
     check_rate_limit(user["id"], "institutional_chat")
-    input_check = check_input(body.message, "institutional", user_id=user["id"])
+    role = user.get("role") or "admin"
+    privileged = role in ("admin", "psychologist", "platform_admin")
+    chat_type = "privileged" if privileged else "institutional"
+    input_check = check_input(body.message, chat_type, user_id=user["id"], role=role)
     if input_check.action in ("block", "redirect"):
         return {
             "text": input_check.user_message or "",
             "chart": None,
             "guardrail": input_check.action,
+            "handoff": False,
+        }
+    if input_check.action == "handoff":
+        return {
+            "text": input_check.user_message or INSTITUTIONAL_CHAT_FALLBACK,
+            "chart": None,
+            "guardrail": "handoff",
+            "handoff": True,
+            "degraded": True,
         }
 
+    message = input_check.sanitized_text or body.message
     dashboard = _safe_dashboard(user, institution_id)
     kpis = dashboard.get("kpis") or []
     charts = dashboard.get("charts") or {}
     try:
-        raw = await institutional_chat_reply(body.message, body.history, kpis, charts)
-        output_check = check_output(raw, "institutional", user_id=user["id"])
+        raw, provider = await institutional_chat_reply(
+            message, body.history, kpis, charts,
+            privileged=privileged,
+            role=role,
+            user_id=user.get("id"),
+            escalate_on_failure=True,
+        )
+        if provider == "counselor":
+            return {
+                "text": raw or INSTITUTIONAL_CHAT_FALLBACK,
+                "chart": None,
+                "degraded": True,
+                "provider": provider,
+                "handoff": True,
+            }
+        output_check = check_output(raw, chat_type, user_id=user["id"])
         if not output_check.allowed and output_check.user_message:
             raw = output_check.user_message
         else:
@@ -725,7 +791,8 @@ async def institutional_chat(
             "text": text,
             "chart": chart,
             "degraded": bool(dashboard.get("degraded")) or text == INSTITUTIONAL_CHAT_FALLBACK,
-            "provider": "llm",
+            "provider": provider,
+            "handoff": False,
         }
     except Exception as exc:
         logger.error("Institutional chat failed: %s", exc)
@@ -734,4 +801,5 @@ async def institutional_chat(
             "chart": None,
             "degraded": True,
             "provider": "fallback",
+            "handoff": True,
         }

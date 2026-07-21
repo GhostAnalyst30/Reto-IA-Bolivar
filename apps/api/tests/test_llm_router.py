@@ -30,9 +30,8 @@ class OpenRouterModelChainTests(unittest.TestCase):
 def _provider_patches(*, models_csv: str, primary: str = "model-a:free"):
     return (
         patch.object(llm_router.settings, "openrouter_api_key", "sk-test"),
-        patch.object(llm_router.settings, "gemini_api_key", ""),
         patch.object(llm_router.settings, "huggingface_api_key", ""),
-        patch.object(llm_router.settings, "litellm_api_base", ""),
+        patch.object(llm_router.settings, "llm_provider_order", "openrouter,huggingface"),
         patch.object(llm_router.settings, "guardrails_enabled", False),
         patch.object(llm_router.settings, "llm_model_tutor", primary),
         patch.object(llm_router.settings, "llm_openrouter_free_models", models_csv),
@@ -54,7 +53,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             models_csv="model-a:free,model-b:free,model-c:free",
             primary="model-a:free",
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
              patch.object(llm_router, "_openrouter_complete", side_effect=fake_complete):
             reasoning, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
@@ -75,7 +74,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             return "ok after 429"
 
         patches = _provider_patches(models_csv="model-a:free,model-b:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
              patch.object(llm_router, "_openrouter_complete", side_effect=fake_complete):
             _, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
@@ -91,7 +90,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("down")
 
         patches = _provider_patches(models_csv="a:free,b:free", primary="a:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
              patch.object(llm_router, "_openrouter_complete", side_effect=always_fail):
             _, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
@@ -107,7 +106,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("down")
 
         patches = _provider_patches(models_csv="a:free", primary="a:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
              patch.object(llm_router, "_openrouter_complete", side_effect=always_fail):
             events = []
             async for ev in llm_router.stream_with_fallback(

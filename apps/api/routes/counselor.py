@@ -72,17 +72,26 @@ async def counselor_inbox(user: dict = Depends(require_counselor)):
     )
 
     rows = []
-    for chat in chats.data or []:
-        st = student_map.get(chat["user_id"], {})
+    chat_ids = [c["id"] for c in (chats.data or [])]
+    last_by_chat: dict[str, dict] = {}
+    if chat_ids:
+        # Batch last messages — fetch recent messages and keep latest per chat
         msgs = (
             sb.table("messages")
-            .select("role, content, created_at")
-            .eq("chat_id", chat["id"])
+            .select("chat_id, role, content, created_at")
+            .in_("chat_id", chat_ids)
             .order("created_at", desc=True)
-            .limit(1)
+            .limit(max(50, len(chat_ids) * 3))
             .execute()
         )
-        last = (msgs.data or [{}])[0]
+        for m in msgs.data or []:
+            cid = m.get("chat_id")
+            if cid and cid not in last_by_chat:
+                last_by_chat[cid] = m
+
+    for chat in chats.data or []:
+        st = student_map.get(chat["user_id"], {})
+        last = last_by_chat.get(chat["id"], {})
         unread = last.get("role") == "user"
         rows.append({
             **chat,

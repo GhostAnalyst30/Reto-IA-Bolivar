@@ -10,13 +10,13 @@ import { UtbLogo } from '@/components/branding/UtbLogo';
 import { ROLE_LABELS } from '@/lib/utils';
 import { isUtbEmail, normalizeUtbEmail } from '@/lib/utb-auth';
 
-const ROLES = ['area_head', 'dean', 'vice_president', 'rector', 'admin'] as const;
+const ROLES = ['admin', 'psychologist'] as const;
 
 export default function RegisterInstitutionalPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<string>('dean');
+  const [role, setRole] = useState<string>('admin');
   const [authKey, setAuthKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

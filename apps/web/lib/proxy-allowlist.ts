@@ -1,4 +1,4 @@
-import { INSTITUTIONAL_ROLES, PLATFORM_ADMIN_ROLE, STUDENT_ROLE } from '@/lib/utils';
+import { INSTITUTIONAL_ROLES, PLATFORM_ADMIN_ROLE, STUDENT_ROLE, ADMIN_ROLE, PSYCHOLOGIST_ROLE } from '@/lib/utils';
 
 const ADMIN_PREFIX = '/admin';
 const PLATFORM_PREFIX = '/platform';
@@ -22,11 +22,19 @@ const STUDENT_PREFIXES = [
 
 const INSTITUTIONAL_PREFIXES = ['/institutional'];
 
-/** platform_admin tiene acceso completo a todas las rutas API del proxy */
 function isPlatformAdminFullAccess(path: string, role: string): boolean {
   if (role !== PLATFORM_ADMIN_ROLE) return false;
   if (path.includes('..') || path.startsWith('http')) return false;
   return path.startsWith('/');
+}
+
+function isStaff(role: string): boolean {
+  return (
+    role === PLATFORM_ADMIN_ROLE
+    || role === ADMIN_ROLE
+    || role === PSYCHOLOGIST_ROLE
+    || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
+  );
 }
 
 export function isPathAllowed(path: string, role: string): boolean {
@@ -43,32 +51,25 @@ export function isPathAllowed(path: string, role: string): boolean {
     return true;
   }
 
-  // Solicitudes de registro: cualquier rol institucional puede aprobar/denegar
+  // Auth keys / security API: platform only
+  if (path.startsWith('/admin/auth-keys') || path.startsWith('/admin/security') || path.startsWith('/admin/sessions')) {
+    return role === PLATFORM_ADMIN_ROLE;
+  }
+
   if (path.startsWith('/admin/requests')) {
-    return (
-      role === PLATFORM_ADMIN_ROLE
-      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
-    );
+    return isStaff(role);
   }
 
   if (path.startsWith(ADMIN_PREFIX)) {
-    return role === 'admin' || role === PLATFORM_ADMIN_ROLE;
+    return role === ADMIN_ROLE || role === PSYCHOLOGIST_ROLE || role === PLATFORM_ADMIN_ROLE;
   }
 
-  // Gestión de oportunidades/recursos: directivos y admins
   if (path.startsWith('/opportunities/admin')) {
-    return (
-      role === PLATFORM_ADMIN_ROLE
-      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
-    );
+    return isStaff(role);
   }
 
   if (INSTITUTIONAL_PREFIXES.some((p) => path.startsWith(p))) {
-    return (
-      role === PLATFORM_ADMIN_ROLE
-      || role === 'admin'
-      || INSTITUTIONAL_ROLES.includes(role as typeof INSTITUTIONAL_ROLES[number])
-    );
+    return isStaff(role);
   }
 
   if (STUDENT_PREFIXES.some((p) => path.startsWith(p))) {

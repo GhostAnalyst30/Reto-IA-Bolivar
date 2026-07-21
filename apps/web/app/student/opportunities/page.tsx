@@ -15,6 +15,7 @@ interface Opportunity {
   deadline?: string;
   match_score?: number;
   match_reasons?: string[];
+  external_url?: string;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -147,9 +148,16 @@ function OppCard({ opp, highlight }: { opp: Opportunity; highlight?: boolean }) 
           {opp.match_reasons.map((r) => <li key={r}>• {r}</li>)}
         </ul>
       )}
-      <Link href={`/student/opportunities/${opp.id}`} className="mt-4 inline-block">
-        <Button size="sm" variant="secondary">Ver detalle</Button>
-      </Link>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href={`/student/opportunities/${opp.id}`}>
+          <Button size="sm" variant="secondary">Ver detalle</Button>
+        </Link>
+        {opp.external_url && (
+          <a href={opp.external_url} target="_blank" rel="noopener noreferrer">
+            <Button size="sm">Abrir página</Button>
+          </a>
+        )}
+      </div>
     </Card>
   );
 }

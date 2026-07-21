@@ -45,11 +45,20 @@ def get_counselor_user(sb) -> dict:
     try:
         row = (
             sb.table("users")
-            .select("id, full_name, email, institution_id")
+            .select("id, full_name, email, institution_id, role")
             .eq("email", email)
             .limit(1)
             .execute()
         )
+        if not row.data:
+            row = (
+                sb.table("users")
+                .select("id, full_name, email, institution_id, role")
+                .eq("role", "psychologist")
+                .eq("status", "approved")
+                .limit(1)
+                .execute()
+            )
     except Exception:
         row = type("R", (), {"data": None})()
 

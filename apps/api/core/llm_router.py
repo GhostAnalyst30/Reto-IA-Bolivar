@@ -1,11 +1,15 @@
-"""Multi-provider LLM router with OpenRouter multi-model fallback chain."""
+"""LangChain multi-provider LLM router (OpenRouter → Hugging Face) with LangSmith tracing."""
+from __future__ import annotations
+
 import asyncio
 import logging
+import os
 import re
 from typing import AsyncGenerator, Awaitable, Callable
 
 import httpx
-from openai import AsyncOpenAI
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 from core.config import settings
 
@@ -28,41 +32,25 @@ HANDOFF_MESSAGE = (
     "Te estoy conectando con el equipo de bienestar UTB para que un psicólogo continúe contigo en este mismo chat."
 )
 
-# ASCII-only: httpx on Windows rejects non-ASCII values in HTTP headers (e.g. ñ in X-Title).
 OPENROUTER_APP_TITLE = "UTB Te acompana"
-
-# Keep under Vercel proxy maxDuration (60s) with margin for SSE framing.
-LLM_HTTP_TIMEOUT_S = 45.0
+LLM_HTTP_TIMEOUT_S = float(getattr(settings, "llm_http_timeout_s", 25.0) or 25.0)
 
 THINKING_PROMPT = """Responde en español. Primero escribe tu razonamiento dentro de etiquetas <thinking>...</thinking>.
 Luego escribe la respuesta final para el estudiante fuera de esas etiquetas."""
 
-GEMINI_MODELS = ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b")
-
-_openrouter_client: AsyncOpenAI | None = None
-_litellm_client: AsyncOpenAI | None = None
 _httpx_client: httpx.AsyncClient | None = None
+_langsmith_ready = False
 
 
-def _get_openrouter_client() -> AsyncOpenAI:
-    global _openrouter_client
-    if _openrouter_client is None:
-        _openrouter_client = AsyncOpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key,
-            default_headers={"HTTP-Referer": settings.app_url, "X-Title": OPENROUTER_APP_TITLE},
-        )
-    return _openrouter_client
-
-
-def _get_litellm_client() -> AsyncOpenAI:
-    global _litellm_client
-    if _litellm_client is None:
-        _litellm_client = AsyncOpenAI(
-            base_url=settings.litellm_api_base,
-            api_key=settings.litellm_api_key or "sk-local",
-        )
-    return _litellm_client
+def _ensure_langsmith() -> None:
+    global _langsmith_ready
+    if _langsmith_ready:
+        return
+    try:
+        settings.configure_langsmith()
+    except Exception as exc:
+        logger.debug("LangSmith configure skipped: %s", exc)
+    _langsmith_ready = True
 
 
 def _get_httpx_client() -> httpx.AsyncClient:
@@ -92,45 +80,57 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
     return "429" in msg or "rate limit" in msg or "rate_limit" in msg
 
 
-async def _openrouter_complete(messages: list[dict], model: str) -> str:
-    client = _get_openrouter_client()
-    response = await client.chat.completions.create(
-        model=model, messages=messages, stream=False, max_tokens=1024,
+def _to_lc_messages(messages: list[dict]):
+    out = []
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content") or ""
+        if role == "system":
+            out.append(SystemMessage(content=content))
+        elif role == "assistant":
+            out.append(AIMessage(content=content))
+        else:
+            out.append(HumanMessage(content=content))
+    return out
+
+
+def _openrouter_chat(model: str) -> ChatOpenAI:
+    return ChatOpenAI(
+        model=model,
+        api_key=settings.openrouter_api_key or "missing",
+        base_url=settings.openrouter_base_url,
+        temperature=0.4,
+        max_tokens=1024,
+        timeout=LLM_HTTP_TIMEOUT_S,
+        max_retries=0,
+        default_headers={
+            "HTTP-Referer": settings.app_url,
+            "X-Title": OPENROUTER_APP_TITLE,
+        },
     )
-    return response.choices[0].message.content or ""
 
 
-async def _gemini_complete(messages: list[dict]) -> str:
-    if not settings.gemini_api_key:
-        raise RuntimeError("no gemini key")
-    system = next((m["content"] for m in messages if m["role"] == "system"), "")
-    user_parts = [m["content"] for m in messages if m["role"] in ("user", "assistant")]
-    prompt = f"{system}\n\n" + "\n".join(user_parts) if system else "\n".join(user_parts)
-    client = _get_httpx_client()
-    last_error: Exception | None = None
-    for model in GEMINI_MODELS:
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-            f":generateContent?key={settings.gemini_api_key}"
-        )
-        try:
-            res = await client.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
-            res.raise_for_status()
-            data = res.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as exc:
-            last_error = exc
-            logger.warning("Gemini model %s failed: %s", model, exc)
-    raise RuntimeError(f"all gemini models failed: {last_error}")
+async def _openrouter_complete(messages: list[dict], model: str) -> str:
+    """OpenRouter via LangChain ChatOpenAI (OpenAI-compatible)."""
+    _ensure_langsmith()
+    llm = _openrouter_chat(model)
+    result = await llm.ainvoke(_to_lc_messages(messages))
+    content = result.content
+    if isinstance(content, list):
+        return "".join(str(p) for p in content)
+    return str(content or "")
 
 
 async def _huggingface_complete(messages: list[dict]) -> str:
+    """Hugging Face Inference API fallback (traced as LangChain runnable when possible)."""
     if not settings.huggingface_api_key:
         raise RuntimeError("no hf key")
+    _ensure_langsmith()
     prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+    model = settings.huggingface_model or "HuggingFaceH4/zephyr-7b-beta"
     client = _get_httpx_client()
     res = await client.post(
-        "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta",
+        f"https://api-inference.huggingface.co/models/{model}",
         headers={"Authorization": f"Bearer {settings.huggingface_api_key}"},
         json={"inputs": prompt, "parameters": {"max_new_tokens": 512, "return_full_text": False}},
     )
@@ -138,18 +138,9 @@ async def _huggingface_complete(messages: list[dict]) -> str:
     data = res.json()
     if isinstance(data, list) and data:
         return data[0].get("generated_text", "")
+    if isinstance(data, dict) and "generated_text" in data:
+        return str(data["generated_text"])
     return str(data)
-
-
-async def _litellm_complete(messages: list[dict]) -> str:
-    if not settings.litellm_api_base:
-        raise RuntimeError("no litellm")
-    client = _get_litellm_client()
-    response = await client.chat.completions.create(
-        model="meta-llama/llama-3.2-3b-instruct:free",
-        messages=messages, stream=False, max_tokens=1024,
-    )
-    return response.choices[0].message.content or ""
 
 
 def _apply_output_guardrails(answer: str, chat_type: str | None, user_id: str | None) -> str:
@@ -164,6 +155,25 @@ def _apply_output_guardrails(answer: str, chat_type: str | None, user_id: str | 
     return answer
 
 
+def _build_provider_fns(
+    enriched: list[dict],
+    primary: str,
+) -> list[tuple[str, Callable[[], Awaitable[str]]]]:
+    providers: list[tuple[str, Callable[[], Awaitable[str]]]] = []
+    order = settings.provider_order_list() or ["openrouter", "huggingface"]
+
+    for provider in order:
+        if provider == "openrouter" and settings.openrouter_api_key:
+            for or_model in settings.openrouter_model_chain(primary):
+                providers.append((
+                    f"openrouter:{or_model}",
+                    lambda m=enriched, mod=or_model: _openrouter_complete(m, mod),
+                ))
+        elif provider == "huggingface" and settings.huggingface_api_key:
+            providers.append(("huggingface", lambda m=enriched: _huggingface_complete(m)))
+    return providers
+
+
 async def complete_with_fallback(
     messages: list[dict],
     model: str | None = None,
@@ -173,12 +183,14 @@ async def complete_with_fallback(
     chat_type: str | None = None,
     user_id: str | None = None,
     escalate_on_failure: bool = False,
+    metadata: dict | None = None,
 ) -> tuple[str, str, str]:
-    """Returns (reasoning, answer, provider_used).
+    """Returns (reasoning, answer, provider_used) via LangChain provider cascade."""
+    _ensure_langsmith()
+    if metadata:
+        # Attach run metadata for LangSmith when tracing is on
+        os.environ.setdefault("LANGCHAIN_PROJECT", settings.langchain_project or "utb-te-acompana")
 
-    OpenRouter tries up to N free models (one attempt each). Then Gemini → HF → LiteLLM.
-    On total failure: counselor if escalate_on_failure or fallback callable; else FALLBACK_MESSAGE.
-    """
     primary = model or settings.llm_model_tutor
     enriched = messages.copy()
     if not skip_thinking:
@@ -187,19 +199,7 @@ async def complete_with_fallback(
         else:
             enriched.insert(0, {"role": "system", "content": THINKING_PROMPT})
 
-    providers: list[tuple[str, Callable[[], Awaitable[str]]]] = []
-    if settings.openrouter_api_key:
-        for or_model in settings.openrouter_model_chain(primary):
-            providers.append((
-                f"openrouter:{or_model}",
-                lambda m=enriched, mod=or_model: _openrouter_complete(m, mod),
-            ))
-    if settings.gemini_api_key:
-        providers.append(("gemini", lambda m=enriched: _gemini_complete(m)))
-    if settings.huggingface_api_key:
-        providers.append(("huggingface", lambda m=enriched: _huggingface_complete(m)))
-    if settings.litellm_api_base:
-        providers.append(("litellm", lambda m=enriched: _litellm_complete(m)))
+    providers = _build_provider_fns(enriched, primary)
 
     def _failure_result() -> tuple[str, str, str]:
         if escalate_on_failure or fallback:
@@ -240,7 +240,6 @@ async def complete_with_fallback(
 
 
 def _chunk_text(text: str, chunk_size: int = 48) -> list[str]:
-    """Split text into fixed-size chunks for faster SSE delivery."""
     return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 
@@ -253,6 +252,7 @@ async def stream_with_fallback(
     chat_type: str | None = None,
     user_id: str | None = None,
     escalate_on_failure: bool = False,
+    metadata: dict | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Yields dicts: {type: thinking|reasoning|token|done|error, content/message}."""
     yield {"type": "thinking", "message": "Analizando tu pregunta y buscando contexto…"}
@@ -260,6 +260,7 @@ async def stream_with_fallback(
     reasoning, answer, provider = await complete_with_fallback(
         messages, model, skip_thinking=skip_thinking, fallback=fallback,
         chat_type=chat_type, user_id=user_id, escalate_on_failure=escalate_on_failure,
+        metadata=metadata,
     )
 
     if reasoning:

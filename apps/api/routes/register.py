@@ -11,7 +11,7 @@ from core.username import is_utb_email
 router = APIRouter(tags=["register"])
 
 UTB_INSTITUTION_SLUG = "utb"
-STAFF_ROLES = ("area_head", "dean", "vice_president", "rector", "admin")
+STAFF_ROLES = ("admin", "psychologist")
 
 
 def _validate_utb_email(email: str) -> None:

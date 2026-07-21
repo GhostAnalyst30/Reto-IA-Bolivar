@@ -8,12 +8,9 @@ import { proxyJson } from '@/lib/proxy';
 import { ROLE_LABELS } from '@/lib/utils';
 
 const STUDENT_ROLES = [{ value: 'student', label: 'Estudiante' }];
-const DIRECTIVO_ROLES = [
-  { value: 'area_head', label: ROLE_LABELS.area_head },
-  { value: 'dean', label: ROLE_LABELS.dean },
-  { value: 'vice_president', label: ROLE_LABELS.vice_president },
-  { value: 'rector', label: ROLE_LABELS.rector },
+const STAFF_ROLES = [
   { value: 'admin', label: ROLE_LABELS.admin },
+  { value: 'psychologist', label: ROLE_LABELS.psychologist },
 ];
 
 interface UserCreateFormProps {
@@ -26,7 +23,7 @@ export function UserCreateForm({ allowedRoles = 'all', redirectTo }: UserCreateF
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState(allowedRoles === 'directivo' ? 'dean' : 'student');
+  const [role, setRole] = useState(allowedRoles === 'directivo' ? 'admin' : 'student');
   const [program, setProgram] = useState('');
   const [semester, setSemester] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -43,8 +40,8 @@ export function UserCreateForm({ allowedRoles = 'all', redirectTo }: UserCreateF
 
   const roleOptions =
     allowedRoles === 'student' ? STUDENT_ROLES
-    : allowedRoles === 'directivo' ? DIRECTIVO_ROLES
-    : [...STUDENT_ROLES, ...DIRECTIVO_ROLES];
+    : allowedRoles === 'directivo' ? STAFF_ROLES
+    : [...STUDENT_ROLES, ...STAFF_ROLES];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

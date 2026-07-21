@@ -27,3 +27,8 @@ pnpm dev:web   # :3000
 ## Documentación
 
 Setup, entorno, migraciones y deploy: **[DOCUMENTATION.md](DOCUMENTATION.md)**
+
+
+> **Desarrolladores:**
+> Emmanuel Ascendra Perez
+> Susana Rosales Castellar

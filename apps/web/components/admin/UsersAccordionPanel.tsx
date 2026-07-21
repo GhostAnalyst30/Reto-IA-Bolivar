@@ -28,7 +28,7 @@ interface UsersAccordionPanelProps {
   detailBasePath?: string;
 }
 
-const DIRECTIVO_ROLES = ['area_head', 'dean', 'vice_president', 'rector', 'admin'];
+const DIRECTIVO_ROLES = ['admin', 'psychologist'];
 
 export function UsersAccordionPanel({
   defaultRole,
