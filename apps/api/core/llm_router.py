@@ -1,9 +1,10 @@
-"""LangChain multi-provider LLM router (OpenRouter → Hugging Face) with LangSmith tracing."""
+"""LangChain multi-provider LLM router (OpenRouter → Hugging Face → Gemini) with LangSmith tracing."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import random
 import re
 from typing import AsyncGenerator, Awaitable, Callable
 
@@ -33,7 +34,10 @@ HANDOFF_MESSAGE = (
 )
 
 OPENROUTER_APP_TITLE = "UTB Te acompana"
-LLM_HTTP_TIMEOUT_S = float(getattr(settings, "llm_http_timeout_s", 25.0) or 25.0)
+LLM_HTTP_TIMEOUT_S = float(getattr(settings, "llm_http_timeout_s", 15.0) or 15.0)
+LLM_GEMINI_TIMEOUT_S = float(getattr(settings, "llm_gemini_timeout_s", 20.0) or 20.0)
+LLM_TRANSIENT_RETRIES = max(0, int(getattr(settings, "llm_transient_retries", 1) or 0))
+LLM_RETRY_BACKOFF_S = float(getattr(settings, "llm_retry_backoff_s", 0.8) or 0.8)
 
 THINKING_PROMPT = """Responde en español. Primero escribe tu razonamiento dentro de etiquetas <thinking>...</thinking>.
 Luego escribe la respuesta final para el estudiante fuera de esas etiquetas."""
@@ -69,15 +73,48 @@ def _parse_thinking(text: str) -> tuple[str, str]:
     return "", text.strip()
 
 
-def _is_rate_limit_error(exc: BaseException) -> bool:
+def _status_code(exc: BaseException) -> int | None:
     status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-    if status == 429:
-        return True
+    if isinstance(status, int):
+        return status
     response = getattr(exc, "response", None)
-    if response is not None and getattr(response, "status_code", None) == 429:
+    if response is not None:
+        code = getattr(response, "status_code", None)
+        if isinstance(code, int):
+            return code
+    return None
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    if _status_code(exc) == 429:
         return True
     msg = str(exc).lower()
     return "429" in msg or "rate limit" in msg or "rate_limit" in msg
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
+        return True
+    if _is_rate_limit_error(exc):
+        return True
+    code = _status_code(exc)
+    if code is not None and code >= 500:
+        return True
+    msg = str(exc).lower()
+    return any(
+        token in msg
+        for token in (
+            "timeout",
+            "timed out",
+            "temporarily unavailable",
+            "service unavailable",
+            "connection reset",
+            "connection error",
+            "503",
+            "502",
+            "504",
+        )
+    )
 
 
 def _to_lc_messages(messages: list[dict]):
@@ -92,6 +129,12 @@ def _to_lc_messages(messages: list[dict]):
         else:
             out.append(HumanMessage(content=content))
     return out
+
+
+def _message_content_to_str(content) -> str:
+    if isinstance(content, list):
+        return "".join(str(p) for p in content)
+    return str(content or "")
 
 
 def _openrouter_chat(model: str) -> ChatOpenAI:
@@ -110,15 +153,34 @@ def _openrouter_chat(model: str) -> ChatOpenAI:
     )
 
 
+def _gemini_chat() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=settings.llm_model_gemini or "gemini-2.0-flash",
+        api_key=settings.gemini_api_key or "missing",
+        base_url=(settings.gemini_base_url or "https://generativelanguage.googleapis.com/v1beta/openai/").rstrip("/") + "/",
+        temperature=0.4,
+        max_tokens=1024,
+        timeout=LLM_GEMINI_TIMEOUT_S,
+        max_retries=0,
+    )
+
+
 async def _openrouter_complete(messages: list[dict], model: str) -> str:
     """OpenRouter via LangChain ChatOpenAI (OpenAI-compatible)."""
     _ensure_langsmith()
     llm = _openrouter_chat(model)
     result = await llm.ainvoke(_to_lc_messages(messages))
-    content = result.content
-    if isinstance(content, list):
-        return "".join(str(p) for p in content)
-    return str(content or "")
+    return _message_content_to_str(result.content)
+
+
+async def _gemini_complete(messages: list[dict]) -> str:
+    """Gemini via OpenAI-compatible Generative Language API (LangChain ChatOpenAI)."""
+    if not settings.gemini_api_key:
+        raise RuntimeError("no gemini key")
+    _ensure_langsmith()
+    llm = _gemini_chat()
+    result = await llm.ainvoke(_to_lc_messages(messages))
+    return _message_content_to_str(result.content)
 
 
 async def _huggingface_complete(messages: list[dict]) -> str:
@@ -143,6 +205,36 @@ async def _huggingface_complete(messages: list[dict]) -> str:
     return str(data)
 
 
+async def _call_with_retry(
+    name: str,
+    fn: Callable[[], Awaitable[str]],
+    *,
+    timeout_s: float,
+) -> str:
+    """One transient retry with jittered backoff, then raise."""
+    attempts = 1 + LLM_TRANSIENT_RETRIES
+    last_exc: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            return await asyncio.wait_for(fn(), timeout=timeout_s)
+        except Exception as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts or not _is_transient_error(exc):
+                raise
+            delay = LLM_RETRY_BACKOFF_S * (0.5 + random.random())
+            logger.warning(
+                "LLM provider %s transient error (attempt %s/%s); retry in %.1fs: %s",
+                name,
+                attempt + 1,
+                attempts,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
 def _apply_output_guardrails(answer: str, chat_type: str | None, user_id: str | None) -> str:
     if not (settings.guardrails_enabled and chat_type):
         return answer
@@ -155,12 +247,18 @@ def _apply_output_guardrails(answer: str, chat_type: str | None, user_id: str | 
     return answer
 
 
+def _timeout_for_provider(name: str) -> float:
+    if name == "gemini" or name.startswith("gemini:"):
+        return LLM_GEMINI_TIMEOUT_S
+    return LLM_HTTP_TIMEOUT_S
+
+
 def _build_provider_fns(
     enriched: list[dict],
     primary: str,
 ) -> list[tuple[str, Callable[[], Awaitable[str]]]]:
     providers: list[tuple[str, Callable[[], Awaitable[str]]]] = []
-    order = settings.provider_order_list() or ["openrouter", "huggingface"]
+    order = settings.provider_order_list() or ["openrouter", "huggingface", "gemini"]
 
     for provider in order:
         if provider == "openrouter" and settings.openrouter_api_key:
@@ -171,6 +269,8 @@ def _build_provider_fns(
                 ))
         elif provider == "huggingface" and settings.huggingface_api_key:
             providers.append(("huggingface", lambda m=enriched: _huggingface_complete(m)))
+        elif provider == "gemini" and settings.gemini_api_key:
+            providers.append(("gemini", lambda m=enriched: _gemini_complete(m)))
     return providers
 
 
@@ -215,7 +315,7 @@ async def complete_with_fallback(
 
         for name, fn in providers:
             try:
-                raw = await asyncio.wait_for(fn(), timeout=LLM_HTTP_TIMEOUT_S)
+                raw = await _call_with_retry(name, fn, timeout_s=_timeout_for_provider(name))
                 reasoning, answer = _parse_thinking(raw)
                 if answer:
                     answer = _apply_output_guardrails(answer, chat_type, user_id)

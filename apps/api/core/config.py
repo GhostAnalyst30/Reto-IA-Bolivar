@@ -24,9 +24,11 @@ class Settings(BaseSettings):
     llm_openrouter_free_models: str = DEFAULT_OPENROUTER_FREE_MODELS
     llm_max_openrouter_attempts: int = 5
     llm_provider: str = "openrouter"
-    # CSV order for LangChain provider cascade (openrouter, huggingface).
-    llm_provider_order: str = "openrouter,huggingface"
+    # CSV order for LangChain provider cascade (openrouter, huggingface, gemini).
+    llm_provider_order: str = "openrouter,huggingface,gemini"
     gemini_api_key: str = ""
+    llm_model_gemini: str = "gemini-2.0-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     huggingface_api_key: str = ""
     huggingface_model: str = "HuggingFaceH4/zephyr-7b-beta"
     litellm_api_base: str = ""
@@ -48,7 +50,11 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""
     langchain_project: str = "utb-te-acompana"
-    llm_http_timeout_s: float = 25.0
+    # Per-attempt timeout; keep low so OpenRouter free cascade + Gemini fit under proxy 60s.
+    llm_http_timeout_s: float = 15.0
+    llm_gemini_timeout_s: float = 20.0
+    llm_transient_retries: int = 1
+    llm_retry_backoff_s: float = 0.8
 
     class Config:
         env_file = ".env"
@@ -74,7 +80,7 @@ class Settings(BaseSettings):
     def provider_order_list(self) -> list[str]:
         return [
             p.strip().lower()
-            for p in (self.llm_provider_order or "openrouter,huggingface").split(",")
+            for p in (self.llm_provider_order or "openrouter,huggingface,gemini").split(",")
             if p.strip()
         ]
 

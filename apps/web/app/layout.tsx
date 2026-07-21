@@ -12,8 +12,10 @@ const dmSans = DM_Sans({
 
 const newsreader = Newsreader({
   subsets: ['latin'],
+  weight: ['400', '600', '700'],
   variable: '--font-newsreader',
   display: 'swap',
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {

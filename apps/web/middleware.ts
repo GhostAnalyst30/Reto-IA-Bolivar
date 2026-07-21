@@ -58,7 +58,29 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { session } } = await supabase.auth.getSession();
+  let session = null;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      // Stale/invalid refresh token — clear auth cookies so the user can log in again.
+      const code = (error as { code?: string }).code || '';
+      if (
+        code === 'refresh_token_not_found'
+        || /refresh token/i.test(error.message || '')
+      ) {
+        await supabase.auth.signOut();
+        for (const cookie of request.cookies.getAll()) {
+          if (cookie.name.includes('sb-') && cookie.name.includes('auth')) {
+            response.cookies.set(cookie.name, '', { maxAge: 0, path: '/' });
+          }
+        }
+      }
+    } else {
+      session = data.session;
+    }
+  } catch {
+    session = null;
+  }
   const user = session?.user ?? null;
   const path = request.nextUrl.pathname;
 

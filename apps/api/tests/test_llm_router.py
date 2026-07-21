@@ -1,4 +1,4 @@
-"""Tests for OpenRouter multi-model fallback and counselor escalation."""
+"""Tests for OpenRouter multi-model fallback, Gemini hop, retries, and counselor escalation."""
 import unittest
 from unittest.mock import patch
 
@@ -26,16 +26,30 @@ class OpenRouterModelChainTests(unittest.TestCase):
         )
         self.assertEqual(s.openrouter_model_chain(), ["x:free", "y:free"])
 
+    def test_provider_order_includes_gemini_by_default(self):
+        s = Settings()
+        self.assertIn("gemini", s.provider_order_list())
 
-def _provider_patches(*, models_csv: str, primary: str = "model-a:free"):
+
+def _provider_patches(
+    *,
+    models_csv: str,
+    primary: str = "model-a:free",
+    openrouter_key: str = "sk-test",
+    huggingface_key: str = "",
+    gemini_key: str = "",
+    provider_order: str = "openrouter,huggingface,gemini",
+):
     return (
-        patch.object(llm_router.settings, "openrouter_api_key", "sk-test"),
-        patch.object(llm_router.settings, "huggingface_api_key", ""),
-        patch.object(llm_router.settings, "llm_provider_order", "openrouter,huggingface"),
+        patch.object(llm_router.settings, "openrouter_api_key", openrouter_key),
+        patch.object(llm_router.settings, "huggingface_api_key", huggingface_key),
+        patch.object(llm_router.settings, "gemini_api_key", gemini_key),
+        patch.object(llm_router.settings, "llm_provider_order", provider_order),
         patch.object(llm_router.settings, "guardrails_enabled", False),
         patch.object(llm_router.settings, "llm_model_tutor", primary),
         patch.object(llm_router.settings, "llm_openrouter_free_models", models_csv),
         patch.object(llm_router.settings, "llm_max_openrouter_attempts", 5),
+        patch.object(llm_router, "LLM_TRANSIENT_RETRIES", 0),
     )
 
 
@@ -53,7 +67,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             models_csv="model-a:free,model-b:free,model-c:free",
             primary="model-a:free",
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], \
              patch.object(llm_router, "_openrouter_complete", side_effect=fake_complete):
             reasoning, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
@@ -74,7 +88,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             return "ok after 429"
 
         patches = _provider_patches(models_csv="model-a:free,model-b:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], \
              patch.object(llm_router, "_openrouter_complete", side_effect=fake_complete):
             _, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
@@ -85,13 +99,88 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider, "openrouter")
         self.assertEqual(calls, ["model-a:free", "model-b:free"])
 
+    async def test_gemini_used_when_openrouter_and_hf_fail(self):
+        async def always_fail(messages, model):
+            raise RuntimeError("or down")
+
+        async def hf_fail(messages):
+            raise RuntimeError("hf down")
+
+        async def gemini_ok(messages):
+            return "respuesta gemini"
+
+        patches = _provider_patches(
+            models_csv="a:free",
+            primary="a:free",
+            huggingface_key="hf-test",
+            gemini_key="gem-test",
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], \
+             patch.object(llm_router, "_openrouter_complete", side_effect=always_fail), \
+             patch.object(llm_router, "_huggingface_complete", side_effect=hf_fail), \
+             patch.object(llm_router, "_gemini_complete", side_effect=gemini_ok):
+            _, answer, provider = await llm_router.complete_with_fallback(
+                [{"role": "user", "content": "hola"}],
+                skip_thinking=True,
+            )
+
+        self.assertEqual(answer, "respuesta gemini")
+        self.assertEqual(provider, "gemini")
+
+    async def test_build_providers_includes_gemini_when_key_set(self):
+        patches = _provider_patches(
+            models_csv="a:free",
+            primary="a:free",
+            gemini_key="gem-test",
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8]:
+            providers = llm_router._build_provider_fns(
+                [{"role": "user", "content": "hola"}],
+                "a:free",
+            )
+        names = [n for n, _ in providers]
+        self.assertTrue(any(n.startswith("openrouter:") for n in names))
+        self.assertIn("gemini", names)
+
+    async def test_transient_retry_then_success(self):
+        calls = {"n": 0}
+
+        async def flaky(messages, model):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise Exception("Error code: 429 - rate limit")
+            return "ok after retry"
+
+        patches = _provider_patches(models_csv="model-a:free", primary="model-a:free")
+        # Enable one transient retry for this test only.
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+             patch.object(llm_router, "LLM_TRANSIENT_RETRIES", 1), \
+             patch.object(llm_router, "LLM_RETRY_BACKOFF_S", 0.01), \
+             patch.object(llm_router, "_openrouter_complete", side_effect=flaky):
+            _, answer, provider = await llm_router.complete_with_fallback(
+                [{"role": "user", "content": "hola"}],
+                skip_thinking=True,
+            )
+
+        self.assertEqual(answer, "ok after retry")
+        self.assertEqual(provider, "openrouter")
+        self.assertEqual(calls["n"], 2)
+
     async def test_total_failure_escalates_to_counselor(self):
         async def always_fail(messages, model):
             raise RuntimeError("down")
 
-        patches = _provider_patches(models_csv="a:free,b:free", primary="a:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
-             patch.object(llm_router, "_openrouter_complete", side_effect=always_fail):
+        async def gemini_fail(messages):
+            raise RuntimeError("gemini down")
+
+        patches = _provider_patches(
+            models_csv="a:free,b:free",
+            primary="a:free",
+            gemini_key="gem-test",
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], \
+             patch.object(llm_router, "_openrouter_complete", side_effect=always_fail), \
+             patch.object(llm_router, "_gemini_complete", side_effect=gemini_fail):
             _, answer, provider = await llm_router.complete_with_fallback(
                 [{"role": "user", "content": "hola"}],
                 skip_thinking=True,
@@ -106,7 +195,7 @@ class CompleteWithFallbackTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("down")
 
         patches = _provider_patches(models_csv="a:free", primary="a:free")
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], \
              patch.object(llm_router, "_openrouter_complete", side_effect=always_fail):
             events = []
             async for ev in llm_router.stream_with_fallback(

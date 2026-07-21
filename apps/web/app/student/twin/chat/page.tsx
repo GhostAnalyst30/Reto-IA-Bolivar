@@ -191,6 +191,10 @@ export default function TwinChatPage() {
         assistant = result.content.trim();
         setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: assistant }]);
       }
+      // Proxy/backend unavailable → escalate to psychologist (same as LLM exhaustion).
+      if (result.needsHandoff && !result.handoff) {
+        await requestHumanHandoff('LLM/proxy no disponible; escalado a bienestar');
+      }
       const userCount = nextMsgs.filter((m) => m.role === 'user').length;
       if (userCount >= 15) setLimitReached(true);
       loadSelfHelpFromConversation(nextMsgs, content);
@@ -215,11 +219,11 @@ export default function TwinChatPage() {
       } else if (status === 429) {
         setError('Demasiados mensajes. Espera un momento e intenta de nuevo.');
       } else {
-        // Keep the chat usable: show a soft assistant bubble instead of forcing human handoff.
         const soft =
-          'El servicio está temporalmente limitado. Puedes seguir escribiendo; intentaremos responder en el próximo mensaje.';
+          'No pude completar una respuesta automática en este momento. Te estoy conectando con el equipo de bienestar UTB.';
         setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: soft }]);
         setError('');
+        await requestHumanHandoff('Error de red en el chat; escalado a bienestar');
       }
     }
     setStreaming(false);

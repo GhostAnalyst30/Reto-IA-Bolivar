@@ -14,6 +14,9 @@ export class ProxyError extends Error {
 const SOFT_CHAT_FALLBACK =
   'El servicio está temporalmente limitado. Puedes seguir escribiendo; intentaremos responder en el próximo mensaje.';
 
+const TWIN_HANDOFF_FALLBACK =
+  'No pude completar una respuesta automática en este momento. Te estoy conectando con el equipo de bienestar UTB para que un psicólogo continúe contigo en este mismo chat.';
+
 function mapProxyErrorMessage(status: number, detail?: string): string {
   if (detail === 'Not Found') {
     return 'Endpoint no disponible. Verifique que la API esté corriendo y actualizada.';
@@ -92,16 +95,24 @@ export interface StreamCallbacks {
   onGuardrail?: (payload: { action?: string; privacy_notice?: string; flags?: string[] }) => void;
 }
 
+function softTwinHandoffResult(
+  cb: StreamCallbacks,
+): { content: string; handoff?: HandoffPayload; degraded?: boolean; needsHandoff?: boolean } {
+  cb.onToken?.(TWIN_HANDOFF_FALLBACK);
+  return { content: TWIN_HANDOFF_FALLBACK, degraded: true, needsHandoff: true };
+}
+
 export async function proxyStream(
   path: string,
   body: object,
   callbacks: StreamCallbacks | ((token: string) => void),
-): Promise<{ content: string; handoff?: HandoffPayload; degraded?: boolean }> {
+): Promise<{ content: string; handoff?: HandoffPayload; degraded?: boolean; needsHandoff?: boolean }> {
   const cb: StreamCallbacks = typeof callbacks === 'function'
     ? { onToken: callbacks }
     : callbacks;
 
   const scopedPath = appendInstitutionQuery(path);
+  const isTwinChatMessages = /^\/chats\/[^/]+\/messages\/?$/.test(path.split('?')[0]);
   let res: Response;
   try {
     res = await fetch(`/api/proxy?path=${encodeURIComponent(scopedPath)}`, {
@@ -110,6 +121,7 @@ export async function proxyStream(
       body: JSON.stringify(body),
     });
   } catch {
+    if (isTwinChatMessages) return softTwinHandoffResult(cb);
     cb.onToken?.(SOFT_CHAT_FALLBACK);
     return { content: SOFT_CHAT_FALLBACK, degraded: true };
   }
@@ -120,8 +132,9 @@ export async function proxyStream(
       || (data as { error?: string }).error;
     await handleAuthError(res.status, detail);
 
-    // Soft-degrade operational failures so the twin chat keeps going.
+    // Twin chat: escalate to psychologist. Other chats keep soft degrade.
     if (res.status >= 500) {
+      if (isTwinChatMessages) return softTwinHandoffResult(cb);
       cb.onToken?.(SOFT_CHAT_FALLBACK);
       return { content: SOFT_CHAT_FALLBACK, degraded: true };
     }
@@ -134,6 +147,7 @@ export async function proxyStream(
 
   const reader = res.body?.getReader();
   if (!reader) {
+    if (isTwinChatMessages) return softTwinHandoffResult(cb);
     cb.onToken?.(SOFT_CHAT_FALLBACK);
     return { content: SOFT_CHAT_FALLBACK, degraded: true };
   }
@@ -144,6 +158,7 @@ export async function proxyStream(
   let currentEvent = 'message';
   let handoff: HandoffPayload | undefined;
   let degraded = false;
+  let needsHandoff = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -170,6 +185,9 @@ export async function proxyStream(
           cb.onGuardrail?.(parsed);
         } else if (currentEvent === 'done') {
           if (parsed.degraded) degraded = true;
+          if (parsed.needs_handoff || (parsed.counselor && !parsed.handoff_mode)) {
+            needsHandoff = true;
+          }
           if (parsed.counselor && parsed.handoff_mode) {
             handoff = parsed as HandoffPayload;
             cb.onHandoffWaiting?.(handoff);
@@ -188,9 +206,12 @@ export async function proxyStream(
   }
 
   if (!full.trim()) {
+    if (isTwinChatMessages) {
+      return { ...softTwinHandoffResult(cb), handoff };
+    }
     cb.onToken?.(SOFT_CHAT_FALLBACK);
     return { content: SOFT_CHAT_FALLBACK, degraded: true, handoff };
   }
 
-  return { content: full, handoff, degraded };
+  return { content: full, handoff, degraded, needsHandoff };
 }

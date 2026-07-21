@@ -10,6 +10,9 @@ export const maxDuration = 60;
 const CHAT_FALLBACK_TEXT =
   'El servicio está temporalmente limitado. Puedes seguir escribiendo; intentaremos responder en el próximo mensaje.';
 
+const TWIN_HANDOFF_FALLBACK_TEXT =
+  'No pude completar una respuesta automática en este momento. Te estoy conectando con el equipo de bienestar UTB para que un psicólogo continúe contigo en este mismo chat.';
+
 /** Solo el Digital Twin hace SSE en POST /chats/{id}/messages (no counselor). */
 function isStudentChatSse(path: string): boolean {
   return /^\/chats\/[^/]+\/messages\/?$/.test(path);
@@ -52,12 +55,14 @@ const roleCache = new Map<string, { role: string; expires: number }>();
 async function getAuth(): Promise<AuthContext> {
   const supabase = await createClient();
 
-  // getSession() reads the token from cookies locally (no network round-trip).
-  // The FastAPI backend re-validates the JWT, so trusting it here for routing is safe.
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
-  const token = session?.access_token;
-  if (!userId || !token) return { token: undefined, role: '' };
+  // Local session token is enough for proxy routing; FastAPI re-validates the JWT.
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session?.access_token || !session.user?.id) {
+    return { token: undefined, role: '' };
+  }
+
+  const userId = session.user.id;
+  const token = session.access_token;
 
   const cached = roleCache.get(userId);
   if (cached && cached.expires > Date.now()) {
@@ -112,12 +117,19 @@ function softDegradedPayload(path: string): Record<string, unknown> {
   };
 }
 
+/** Twin chat: soft SSE tells the client to escalate to psychologist (real handoff via POST /handoff). */
 function sseFallbackResponse(): NextResponse {
   const encoder = new TextEncoder();
   const chunks = [
-    `event: thinking\ndata: ${JSON.stringify({ message: 'Modo limitado…' })}\n\n`,
-    `event: token\ndata: ${JSON.stringify({ token: CHAT_FALLBACK_TEXT })}\n\n`,
-    `event: done\ndata: ${JSON.stringify({ content: CHAT_FALLBACK_TEXT, counselor: false, degraded: true })}\n\n`,
+    `event: thinking\ndata: ${JSON.stringify({ message: 'Conectando con bienestar…' })}\n\n`,
+    `event: token\ndata: ${JSON.stringify({ token: TWIN_HANDOFF_FALLBACK_TEXT })}\n\n`,
+    `event: done\ndata: ${JSON.stringify({
+      content: TWIN_HANDOFF_FALLBACK_TEXT,
+      counselor: true,
+      degraded: true,
+      needs_handoff: true,
+      provider: 'counselor',
+    })}\n\n`,
   ];
   const stream = new ReadableStream({
     start(controller) {
