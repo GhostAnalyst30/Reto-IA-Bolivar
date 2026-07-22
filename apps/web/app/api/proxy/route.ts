@@ -83,7 +83,7 @@ function deny(message: string, status = 403) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function softDegradedPayload(path: string): Record<string, unknown> {
+function softDegradedPayload(path: string): Record<string, unknown> | unknown[] {
   if (isInstitutionalChat(path)) {
     return { text: CHAT_FALLBACK_TEXT, chart: null, degraded: true, provider: 'fallback' };
   }
@@ -96,13 +96,13 @@ function softDegradedPayload(path: string): Record<string, unknown> {
     };
   }
   if (path.split('?')[0] === '/institutional/risk/students') {
-    return [];
+    return [] as unknown[];
   }
   if (
     path.split('?')[0] === '/institutional/kpis' ||
     path.split('?')[0] === '/institutional/actions'
   ) {
-    return [];
+    return [] as unknown[];
   }
   return {
     kpis: [],
