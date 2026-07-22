@@ -6,7 +6,6 @@ import { PasswordInput } from '@/components/ui/PasswordInput';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { proxyJson } from '@/lib/proxy';
-import { getWeeklyReportEmail } from '@/lib/app-config';
 
 interface ProfileData {
   email: string;
@@ -25,10 +24,9 @@ interface ProfileData {
 interface ProfileFormProps {
   title: string;
   subtitle?: string;
-  showReportInfo?: boolean;
 }
 
-export function ProfileForm({ title, subtitle, showReportInfo }: ProfileFormProps) {
+export function ProfileForm({ title, subtitle }: ProfileFormProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
@@ -199,15 +197,6 @@ export function ProfileForm({ title, subtitle, showReportInfo }: ProfileFormProp
           <Button type="submit" variant="secondary" disabled={actionLoading}>Actualizar contraseña</Button>
         </form>
       </Card>
-
-      {showReportInfo && (
-        <Card>
-          <h3 className="font-semibold">Resumen ejecutivo por correo</h3>
-          <p className="mt-2 text-sm text-zinc-500">
-            Los reportes se envían a <strong>{getWeeklyReportEmail()}</strong>.
-          </p>
-        </Card>
-      )}
     </div>
   );
 }

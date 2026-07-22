@@ -22,7 +22,7 @@ def enqueue_risk_recompute(user_id: str, institution_id: str, triggered_by: str 
 
 
 def process_risk_recompute_queue(institution_id: str, limit: int = 200) -> dict:
-    """Process pending users and clear the queue. Called by cron / dashboard load."""
+    """Process pending users and clear the queue."""
     from services.risk_service import persist_single_risk_report
 
     sb = get_supabase()

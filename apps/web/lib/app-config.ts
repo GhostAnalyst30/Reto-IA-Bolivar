@@ -33,10 +33,6 @@ export function isDemoEmail(email: string): boolean {
   return shouldSkipOutgoingEmail(email);
 }
 
-export function getWeeklyReportEmail(): string {
-  return process.env.WEEKLY_REPORT_EMAIL || 'ascendraemmanuel@gmail.com';
-}
-
 export function getPortalForSession(role: string): string {
   if (role === 'platform_admin') return 'platform';
   if (role === 'student') return 'student';

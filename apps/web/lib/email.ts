@@ -1,11 +1,10 @@
 import {
   getAppUrl,
   getEmailAppUrl,
-  getWeeklyReportEmail,
   shouldSkipOutgoingEmail,
 } from '@/lib/app-config';
 
-export { getAppUrl, getEmailAppUrl, shouldSkipOutgoingEmail, getWeeklyReportEmail };
+export { getAppUrl, getEmailAppUrl, shouldSkipOutgoingEmail };
 export { shouldSkipOutgoingEmail as isDemoEmail };
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
@@ -224,19 +223,6 @@ export async function sendAccountRejectedEmail(params: {
     subject: 'Actualización de solicitud — UTB Te acompaña',
     html,
     devLog: `Rechazo para ${params.to}`,
-  });
-}
-
-export async function sendWeeklyReportEmail(params: {
-  to: string;
-  subject: string;
-  html: string;
-}) {
-  return deliverEmail({
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-    devLog: `Weekly report: ${params.subject}`,
   });
 }
 

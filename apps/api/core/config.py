@@ -35,7 +35,6 @@ class Settings(BaseSettings):
     litellm_api_key: str = ""
     youtube_api_key: str = ""
     scraper_enabled: bool = True
-    cron_secret: str = ""
     allowed_origins: str = "http://localhost:3000"
     app_url: str = "http://localhost:3000"
     internal_register_key: str = ""

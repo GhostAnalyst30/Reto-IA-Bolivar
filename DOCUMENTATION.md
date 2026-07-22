@@ -14,7 +14,7 @@ Copia los ejemplos y completa los valores:
 - `apps/web/.env.local` ← `apps/web/.env.example`
 - `apps/api/.env` ← `apps/api/.env.example`
 
-Grupos habituales: Auth/Supabase, URL de la API, LLM, correo, secretos internos (registro, cron).
+Grupos habituales: Auth/Supabase, URL de la API, LLM, correo, secretos internos (registro).
 
 ## Base de datos
 

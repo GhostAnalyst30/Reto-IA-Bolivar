@@ -21,7 +21,6 @@ from services.risk_service import (
     persist_risk_reports,
     compute_student_risk,
     get_risk_history,
-    prune_risk_history,
 )
 from services.risk_queue import enqueue_risk_recompute
 

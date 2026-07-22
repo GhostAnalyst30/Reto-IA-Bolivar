@@ -7,7 +7,6 @@ export default function PlatformProfilePage() {
     <ProfileForm
       title="Perfil de plataforma"
       subtitle="admin · ascendraemmanuel@gmail.com"
-      showReportInfo
     />
   );
 }

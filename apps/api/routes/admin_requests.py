@@ -1,7 +1,7 @@
 """Admin routes for requests and auth keys."""
 import secrets
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from core.supabase_client import get_supabase
 from core.auth_keys import hash_auth_key
@@ -454,85 +454,3 @@ async def weekly_report_data(
     inst = effective_institution_id(admin, institution_id)
     return compute_dashboard({**admin, "institution_id": inst})
 
-
-UTB_INSTITUTION_ID = "a0000000-0000-4000-8000-000000000001"
-
-
-@router.post("/cron/recompute-risk")
-async def cron_recompute_risk(
-    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
-):
-    from core.config import settings
-    from services.risk_service import persist_risk_reports
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-    count = persist_risk_reports(UTB_INSTITUTION_ID)
-    return {"computed": count, "institution_id": UTB_INSTITUTION_ID}
-
-
-@router.post("/cron/prune-risk")
-async def cron_prune_risk(
-    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
-    keep_days: int = Query(90, ge=30, le=365),
-):
-    from core.config import settings
-    from services.risk_service import prune_risk_history
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-    deleted = prune_risk_history(UTB_INSTITUTION_ID, keep_days=keep_days)
-    return {"pruned": deleted, "institution_id": UTB_INSTITUTION_ID}
-
-
-@router.post("/cron/sentinel")
-async def cron_sentinel(
-    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
-):
-    from core.config import settings
-    from services.risk_queue import process_risk_recompute_queue
-    from services.sentinel_service import run_sentinel
-    from services.care_queue import sync_high_risk_into_queue
-
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-
-    queue_result = process_risk_recompute_queue(UTB_INSTITUTION_ID)
-    sync_high_risk_into_queue(UTB_INSTITUTION_ID)
-    sentinel = run_sentinel(UTB_INSTITUTION_ID)
-    return {
-        "institution_id": UTB_INSTITUTION_ID,
-        "risk_queue": queue_result,
-        "sentinel": sentinel,
-    }
-
-
-@router.get("/cron/outreach-targets")
-async def cron_outreach_targets(
-    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
-):
-    from core.config import settings
-    from services.outreach_service import build_outreach_targets
-
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-    return build_outreach_targets(UTB_INSTITUTION_ID)
-
-
-@router.post("/cron/outreach-log")
-async def cron_outreach_log(
-    body: dict,
-    x_cron_secret: str | None = Header(None, alias="x-cron-secret"),
-):
-    from core.config import settings
-    from services.outreach_service import log_outreach
-
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-    log_outreach(
-        institution_id=body.get("institution_id") or UTB_INSTITUTION_ID,
-        user_id=body["user_id"],
-        segment=body["segment"],
-        subject=body.get("subject") or "",
-        status=body.get("status") or "sent",
-        brevo_id=body.get("brevo_id"),
-    )
-    return {"ok": True}
