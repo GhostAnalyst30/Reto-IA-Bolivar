@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button, Card, Input, LoadingState, EmptyState } from '@/components/ui';
 import { Bookmark, BookmarkCheck, Play, ExternalLink, Search, FolderOpen } from 'lucide-react';
 import { proxyJson } from '@/lib/proxy';
+import { cn } from '@/lib/utils';
 
 interface Resource {
   id: string;
@@ -56,7 +57,11 @@ export default function ResourcesPage() {
   async function toggle(id: string) {
     if (saved.has(id)) {
       await proxyJson(`/saved-resources/${id}`, { method: 'DELETE' });
-      setSaved((s) => { const n = new Set(s); n.delete(id); return n; });
+      setSaved((s) => {
+        const n = new Set(s);
+        n.delete(id);
+        return n;
+      });
     } else {
       await proxyJson(`/saved-resources/${id}`, { method: 'POST', body: '{}' });
       setSaved((s) => new Set(s).add(id));
@@ -72,21 +77,26 @@ export default function ResourcesPage() {
   const displayList = tab === 'search' ? searchResults : resources;
 
   return (
-    <div className="space-y-6">
+    <main className="mx-auto max-w-7xl space-y-8 px-5 pb-24 pt-24 md:px-8 md:pb-16">
       <div>
-        <h1 className="font-display text-2xl font-bold">Recursos y apoyo UTB</h1>
-        <p className="text-zinc-500">Videos, enlaces institucionales y buscador de recursos</p>
+        <h1 className="text-4xl font-bold text-primary">Recursos y apoyo UTB</h1>
+        <p className="mt-2 text-lg text-on-surface-variant">
+          Videos, enlaces institucionales y buscador de recursos
+        </p>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-brand-border pb-2">
+      <div className="relative flex w-full max-w-2xl rounded-xl bg-surface-container-low p-1">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id ? 'bg-brand-amber/20 text-brand-amber' : 'text-zinc-500 hover:text-foreground'
-            }`}
+            className={cn(
+              'relative z-10 flex-1 rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition-colors',
+              tab === t.id
+                ? 'bg-surface-container-lowest text-primary shadow-sm dark:bg-surface-container-highest'
+                : 'text-on-surface-variant hover:text-primary',
+            )}
           >
             {t.label}
           </button>
@@ -94,32 +104,43 @@ export default function ResourcesPage() {
       </div>
 
       {tab === 'search' && (
-        <form onSubmit={doSearch} className="flex gap-2">
-          <Input value={searchQ} onChange={(e) => setSearchQ(e.target.value)} placeholder="Buscar recursos..." className="flex-1" />
-          <Button type="submit"><Search className="h-4 w-4" /></Button>
+        <form onSubmit={doSearch} className="glass-card flex gap-2 rounded-2xl p-3">
+          <Input
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Buscar recursos..."
+            className="flex-1"
+          />
+          <Button type="submit">
+            <Search className="h-4 w-4" />
+          </Button>
         </form>
       )}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading && tab !== 'search' && <LoadingState />}
 
       {!loading && tab === 'videos' && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {displayList.map((r) => (
-            <Card key={r.id} className="overflow-hidden">
-              <div className="aspect-video bg-brand-blue/20 flex items-center justify-center">
-                <Play className="h-10 w-10 text-brand-amber" />
+            <Card key={r.id} className="overflow-hidden !p-0">
+              <div className="flex aspect-video items-center justify-center bg-primary/10">
+                <Play className="h-10 w-10 text-primary" />
               </div>
               <div className="p-4">
-                <h3 className="font-semibold">{r.title}</h3>
-                <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{r.description}</p>
+                <h3 className="font-semibold text-on-surface">{r.title}</h3>
+                <p className="mt-1 line-clamp-2 text-xs text-on-surface-variant">{r.description}</p>
                 <div className="mt-3 flex gap-2">
                   <Link href={`/student/resources/video/${r.id}`}>
                     <Button size="sm">Reproducir</Button>
                   </Link>
                   <Button size="sm" variant="ghost" onClick={() => toggle(r.id)}>
-                    {saved.has(r.id) ? <BookmarkCheck className="h-4 w-4 text-brand-amber" /> : <Bookmark className="h-4 w-4" />}
+                    {saved.has(r.id) ? (
+                      <BookmarkCheck className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Bookmark className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -135,17 +156,17 @@ export default function ResourcesPage() {
             if (items.length === 0) return null;
             return (
               <section key={cat}>
-                <h2 className="mb-2 text-sm font-medium uppercase text-brand-amber">{cat}</h2>
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-primary">{cat}</h2>
                 <div className="space-y-2">
                   {items.map((r) => (
-                    <Card key={r.id} className="flex items-center justify-between gap-4 p-4">
+                    <Card key={r.id} className="flex items-center justify-between gap-4 !p-4">
                       <div>
-                        <h3 className="font-medium">{r.title}</h3>
-                        <p className="text-sm text-zinc-500">{r.description}</p>
+                        <h3 className="font-medium text-on-surface">{r.title}</h3>
+                        <p className="text-sm text-on-surface-variant">{r.description}</p>
                       </div>
                       {r.url && (
                         <a href={r.url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4 text-brand-amber" />
+                          <ExternalLink className="h-4 w-4 text-primary" />
                         </a>
                       )}
                     </Card>
@@ -160,16 +181,16 @@ export default function ResourcesPage() {
       {tab === 'search' && displayList.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {displayList.map((r) => (
-            <Card key={r.id} className="flex justify-between items-start gap-4 p-4">
+            <Card key={r.id} className="flex items-start justify-between gap-4 !p-4">
               <div>
-                <h3 className="font-semibold">{r.title}</h3>
-                <p className="text-xs text-brand-amber">{r.topic}</p>
-                <p className="text-sm text-zinc-500 mt-1">{r.description}</p>
+                <h3 className="font-semibold text-on-surface">{r.title}</h3>
+                <p className="text-xs text-primary">{r.topic}</p>
+                <p className="mt-1 text-sm text-on-surface-variant">{r.description}</p>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex shrink-0 gap-2">
                 {r.url && (
                   <a href={r.url} target="_blank" rel="noopener noreferrer" aria-label="Abrir recurso">
-                    <ExternalLink className="h-4 w-4 text-brand-amber" />
+                    <ExternalLink className="h-4 w-4 text-primary" />
                   </a>
                 )}
                 <Button size="sm" variant="ghost" onClick={() => toggle(r.id)}>
@@ -188,6 +209,6 @@ export default function ResourcesPage() {
           description="Aún no se han publicado recursos aquí. Prueba el buscador o vuelve más tarde."
         />
       )}
-    </div>
+    </main>
   );
 }

@@ -1,9 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, Select, LoadingState, EmptyState } from '@/components/ui';
-import { Compass } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronDown,
+  Compass,
+  Filter,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+} from 'lucide-react';
+import { LoadingState } from '@/components/ui';
+import { Reveal } from '@/components/front/reveal';
 import { proxyJson } from '@/lib/proxy';
 
 interface Opportunity {
@@ -19,10 +28,35 @@ interface Opportunity {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  beca: 'Beca',
+  beca: 'Beca de Excelencia',
   convocatoria: 'Convocatoria',
   evento: 'Evento',
+  investigacion: 'Investigación',
+  bienestar: 'Bienestar',
+  movilidad: 'Movilidad',
+  emprendimiento: 'Emprendimiento',
+  cultura: 'Cultura',
 };
+
+const TYPE_CLASS: Record<string, string> = {
+  beca: 'bg-primary/90 text-on-primary',
+  convocatoria: 'bg-tertiary-container text-on-tertiary-container',
+  evento: 'bg-primary-container text-on-primary',
+  investigacion: 'bg-tertiary-container text-on-tertiary-container',
+  bienestar: 'bg-on-tertiary-fixed-variant text-white',
+  movilidad: 'bg-primary/90 text-on-primary',
+  emprendimiento: 'bg-tertiary text-on-tertiary',
+  cultura: 'bg-primary-container text-on-primary',
+};
+
+const FALLBACK_IMAGES = [
+  '/front/opp-scholarship.png',
+  '/front/opp-robotics.png',
+  '/front/opp-dining.png',
+  '/front/opp-exchange.png',
+  '/front/opp-makerspace.png',
+  '/front/opp-piano.png',
+];
 
 function deadlineBefore(days: number): string {
   const d = new Date();
@@ -35,6 +69,14 @@ const DEADLINE_OPTIONS: Record<string, number> = {
   month: 30,
   quarter: 90,
 };
+
+function imageFor(opp: Opportunity, index: number) {
+  return FALLBACK_IMAGES[index % FALLBACK_IMAGES.length];
+}
+
+function asOppList(value: unknown): Opportunity[] {
+  return Array.isArray(value) ? (value as Opportunity[]) : [];
+}
 
 export default function OpportunitiesPage() {
   const [all, setAll] = useState<Opportunity[]>([]);
@@ -51,6 +93,7 @@ export default function OpportunitiesPage() {
 
   function load() {
     setLoading(true);
+    setError('');
     const params = new URLSearchParams();
     if (typeFilter) params.set('type', typeFilter);
     if (areaFilter) params.set('area', areaFilter);
@@ -63,101 +106,175 @@ export default function OpportunitiesPage() {
       proxyJson<Opportunity[]>('/opportunities/recommended'),
     ])
       .then(([allData, recData]) => {
-        setAll(allData);
-        setRecommended(recData);
+        setAll(asOppList(allData));
+        setRecommended(asOppList(recData));
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
       .finally(() => setLoading(false));
   }
 
+  const list = useMemo(() => {
+    const rec = asOppList(recommended);
+    const rest = asOppList(all);
+    const ids = new Set(rec.map((r) => r.id));
+    return [...rec, ...rest.filter((o) => !ids.has(o.id))];
+  }, [all, recommended]);
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-bold">Oportunidades UTB</h1>
-        <p className="text-zinc-500">Becas, convocatorias y eventos personalizados para ti</p>
-      </div>
+    <main className="mx-auto max-w-7xl px-5 pb-24 pt-24 md:px-8 md:pb-16">
+      <Reveal className="mb-12">
+        <div className="mb-4 flex items-center gap-2 text-primary">
+          <Sparkles className="h-6 w-6" />
+          <span className="text-sm font-semibold uppercase tracking-wider">Para ti</span>
+        </div>
+        <h1 className="mb-4 text-balance text-4xl font-bold text-primary md:text-5xl">
+          Oportunidades y Becas
+        </h1>
+        <p className="max-w-2xl text-pretty text-lg text-on-surface-variant">
+          Descubre programas de apoyo financiero, convocatorias académicas y eventos diseñados para
+          potenciar tu crecimiento universitario.
+        </p>
+      </Reveal>
 
-      {recommended.length > 0 && (
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-brand-amber">Recomendaciones para ti</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {recommended.map((o) => (
-              <OppCard key={o.id} opp={o} highlight />
-            ))}
-          </div>
-        </section>
-      )}
+      <Reveal className="glass-card mb-12 flex flex-col items-end gap-6 rounded-2xl p-6 shadow-sm md:flex-row">
+        <Field label="Tipo de Oportunidad">
+          <Select value={typeFilter} onChange={setTypeFilter}>
+            <option value="">Todas las categorías</option>
+            <option value="beca">Becas</option>
+            <option value="convocatoria">Convocatorias</option>
+            <option value="evento">Eventos</option>
+          </Select>
+        </Field>
+        <Field label="Área Académica">
+          <Select value={areaFilter} onChange={setAreaFilter}>
+            <option value="">Cualquier Facultad</option>
+            <option value="ingenieria">Ingeniería</option>
+            <option value="bienestar">Bienestar</option>
+            <option value="general">General</option>
+            <option value="tecnologia">Tecnología</option>
+          </Select>
+        </Field>
+        <Field label="Cierre de Convocatoria">
+          <Select value={deadlineFilter} onChange={setDeadlineFilter}>
+            <option value="">Cualquier fecha</option>
+            <option value="week">Próximas 2 semanas</option>
+            <option value="month">Este mes</option>
+            <option value="quarter">Este semestre</option>
+          </Select>
+        </Field>
+        <button
+          type="button"
+          onClick={load}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-on-primary transition-all hover:shadow-lg active:scale-95 md:w-auto"
+        >
+          <Filter className="h-5 w-5" />
+          Filtrar
+        </button>
+      </Reveal>
 
-      <div className="flex flex-wrap gap-3">
-        <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">Todos los tipos</option>
-          <option value="beca">Becas</option>
-          <option value="convocatoria">Convocatorias</option>
-          <option value="evento">Eventos</option>
-        </Select>
-        <Select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-          <option value="">Todas las áreas</option>
-          <option value="ingenieria">Ingeniería</option>
-          <option value="bienestar">Bienestar</option>
-          <option value="general">General</option>
-          <option value="tecnologia">Tecnología</option>
-        </Select>
-        <Select value={deadlineFilter} onChange={(e) => setDeadlineFilter(e.target.value)}>
-          <option value="">Cualquier fecha límite</option>
-          <option value="week">Cierra esta semana</option>
-          <option value="month">Cierra este mes</option>
-          <option value="quarter">Próximos 3 meses</option>
-        </Select>
-      </div>
-
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="mb-6 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading ? (
         <LoadingState />
-      ) : all.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {all.map((o) => (
-            <OppCard key={o.id} opp={o} />
+      ) : list.length === 0 && !error ? (
+        <div className="glass-card flex flex-col items-center gap-3 rounded-2xl p-16 text-center">
+          <SlidersHorizontal className="h-10 w-10 text-primary" />
+          <p className="text-lg font-semibold text-on-surface">
+            No hay convocatorias con esos filtros
+          </p>
+          <p className="text-on-surface-variant">
+            Ajusta la categoría o el área académica para ver más resultados.
+          </p>
+          <Compass className="mt-2 h-8 w-8 text-outline" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3">
+          {list.map((opp, i) => (
+            <Reveal key={opp.id} delay={i * 60}>
+              <article className="glass-card animate-card-hover group flex h-full flex-col overflow-hidden rounded-2xl">
+                <div className="relative h-48 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageFor(opp, i)}
+                    alt={opp.title}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <div
+                    className={`absolute left-4 top-4 rounded-full px-3 py-1 text-sm font-medium backdrop-blur-md ${
+                      TYPE_CLASS[opp.type] || 'bg-primary/90 text-on-primary'
+                    }`}
+                  >
+                    {TYPE_LABELS[opp.type] || opp.type}
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-col p-6">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <h3 className="text-xl font-semibold text-primary">{opp.title}</h3>
+                    {opp.match_score != null && opp.match_score > 0 && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                        <Star className="h-3 w-3" />
+                        {opp.match_score}%
+                      </span>
+                    )}
+                  </div>
+                  <p className="mb-6 flex-1 text-on-surface-variant line-clamp-3">
+                    {opp.description}
+                  </p>
+                  <div className="mb-6 flex items-center justify-between text-on-surface-variant">
+                    <div className="flex items-center gap-1">
+                      <CalendarDays className="h-[18px] w-[18px]" />
+                      <span className="text-xs font-medium">
+                        {opp.deadline ? `Cierra: ${opp.deadline}` : 'Sin fecha límite'}
+                      </span>
+                    </div>
+                    {opp.area && (
+                      <span className="text-xs font-medium capitalize">{opp.area}</span>
+                    )}
+                  </div>
+                  <Link
+                    href={`/student/opportunities/${opp.id}`}
+                    className="w-full rounded-xl bg-primary py-3 text-center text-sm font-semibold text-on-primary transition-colors hover:bg-primary-container active:scale-[0.98]"
+                  >
+                    Ver detalle
+                  </Link>
+                </div>
+              </article>
+            </Reveal>
           ))}
         </div>
-      ) : !error ? (
-        <EmptyState
-          icon={<Compass className="h-8 w-8" />}
-          title="No hay oportunidades con estos filtros"
-          description="Prueba ajustando el tipo, el área o la fecha límite. Si no aparece nada, contacta a bienestar UTB."
-        />
-      ) : null}
+      )}
+    </main>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="w-full flex-1">
+      <label className="mb-2 block text-xs font-medium text-on-surface-variant">{label}</label>
+      {children}
     </div>
   );
 }
 
-function OppCard({ opp, highlight }: { opp: Opportunity; highlight?: boolean }) {
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <Card className={highlight ? 'border-brand-amber/40' : ''}>
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-xs uppercase text-brand-amber">{TYPE_LABELS[opp.type] || opp.type}</span>
-        {opp.match_score != null && opp.match_score > 0 && (
-          <span className="rounded bg-brand-amber/20 px-2 py-0.5 text-xs text-brand-amber">{opp.match_score}% match</span>
-        )}
-      </div>
-      <h3 className="mt-2 font-semibold">{opp.title}</h3>
-      <p className="mt-1 text-sm text-zinc-500 line-clamp-2">{opp.description}</p>
-      {opp.deadline && <p className="mt-2 text-xs text-zinc-400">Límite: {opp.deadline}</p>}
-      {opp.match_reasons && opp.match_reasons.length > 0 && (
-        <ul className="mt-2 text-xs text-zinc-500">
-          {opp.match_reasons.map((r) => <li key={r}>• {r}</li>)}
-        </ul>
-      )}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link href={`/student/opportunities/${opp.id}`}>
-          <Button size="sm" variant="secondary">Ver detalle</Button>
-        </Link>
-        {opp.external_url && (
-          <a href={opp.external_url} target="_blank" rel="noopener noreferrer">
-            <Button size="sm">Abrir página</Button>
-          </a>
-        )}
-      </div>
-    </Card>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-on-surface transition-colors focus:border-primary focus:outline-none"
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-outline" />
+    </div>
   );
 }

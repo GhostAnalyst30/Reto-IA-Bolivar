@@ -15,13 +15,13 @@ export function PrivacyBanner({
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200',
+        'flex items-start gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-900 dark:text-indigo-200',
         className
       )}
       role="note"
       aria-label="Aviso de privacidad"
     >
-      <Shield className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" aria-hidden />
+      <Shield className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
       <p>{message}</p>
     </div>
   );

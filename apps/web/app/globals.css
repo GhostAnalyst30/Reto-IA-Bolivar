@@ -3,33 +3,85 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f2f2f2;
-  --surface: #ffffff;
-  --border: #bdbdbd;
-  --text: #000000;
-  --muted: #666666;
-  --utb-blue: #003a70;
-  --utb-blue-mid: #005b96;
+  color-scheme: light;
+
+  /* FRONT ZIP design tokens */
+  --background: #f7fafd;
+  --foreground: #181c1e;
+
+  --primary: #002576;
+  --primary-container: #0038a8;
+  --primary-fixed: #dce1ff;
+  --on-primary: #ffffff;
+  --on-primary-fixed-variant: #093cab;
+
+  --tertiary: #132a62;
+  --tertiary-container: #2c417a;
+  --on-tertiary: #ffffff;
+  --on-tertiary-container: #9bafef;
+  --on-tertiary-fixed-variant: #30447d;
+
+  --surface: #f7fafd;
+  --surface-container: #ebeef1;
+  --surface-container-low: #f1f4f7;
+  --surface-container-high: #e5e8eb;
+  --surface-container-highest: #e0e3e6;
+  --surface-container-lowest: #ffffff;
+  --on-surface: #181c1e;
+  --on-surface-variant: #444653;
+
+  --secondary: #5d5f5f;
+  --secondary-container: #dfe0e0;
+
+  --outline: #747685;
+  --outline-variant: #c4c5d5;
+
+  /* Legacy aliases used across the monorepo */
+  --bg: var(--background);
+  --text: var(--foreground);
+  --muted: var(--on-surface-variant);
+  --border: var(--outline-variant);
+  --utb-blue: var(--primary);
+  --utb-blue-mid: var(--primary-container);
   --utb-blue-light: #4a90c2;
   --utb-orange: #f28c28;
   --privacy: #6366f1;
-  /* aliases usados en componentes existentes */
   --amber: var(--utb-orange);
   --blue-deep: var(--utb-blue);
-  /* public / marketing radius tokens */
-  --public-radius-sm: 0.25rem;
-  --public-radius-md: 0.5rem;
+
+  --public-radius-sm: 0.5rem;
+  --public-radius-md: 0.75rem;
   --public-radius-pill: 9999px;
 }
 
 .dark {
-  --bg: #0a0a0b;
-  --surface: #141416;
-  --border: #2a2a2e;
-  --text: #f4f4f5;
-  --muted: #a1a1aa;
-  --utb-blue: #003a70;
-  --utb-blue-mid: #005b96;
+  --background: #0a0a0b;
+  --foreground: #f4f4f5;
+  /* Keep brand navy in dark mode (FRONT ZIP) */
+  --primary: #002576;
+  --primary-container: #0038a8;
+  --primary-fixed: #1a2744;
+  --on-primary: #ffffff;
+  --on-primary-fixed-variant: #a8b8ff;
+  --tertiary: #9bafef;
+  --tertiary-container: #2c417a;
+  --on-tertiary: #0a152e;
+  --on-tertiary-container: #c5d1ff;
+  --on-tertiary-fixed-variant: #9bafef;
+  --surface: #0a0a0b;
+  --surface-container: #141416;
+  --surface-container-low: #101012;
+  --surface-container-high: #1c1c1f;
+  --surface-container-highest: #242428;
+  --surface-container-lowest: #141416;
+  --on-surface: #f4f4f5;
+  --on-surface-variant: #a1a1aa;
+  --secondary: #a1a1aa;
+  --secondary-container: #2a2a2e;
+  --outline: #747685;
+  --outline-variant: #2a2a2e;
+  --utb-blue: #002576;
+  --utb-blue-mid: #0038a8;
   --utb-blue-light: #4a90c2;
   --utb-orange: #f28c28;
   --privacy: #6366f1;
@@ -37,18 +89,22 @@
   --blue-deep: var(--utb-blue);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+}
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-jakarta), var(--font-dm-sans), 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
 .font-display {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--font-jakarta), var(--font-newsreader), 'Plus Jakarta Sans', Georgia, serif;
 }
 
 @layer utilities {
@@ -61,7 +117,129 @@ body {
   }
 }
 
-/* Claymorphism utilities — institutional, subdued */
+/* ---------- FRONT ZIP shared brand utilities ---------- */
+.glass-card {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(0, 37, 118, 0.08);
+}
+.dark .glass-card {
+  background: rgba(20, 20, 22, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 37, 118, 0.1);
+}
+.dark .glass-input {
+  background: rgba(20, 20, 22, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in-up {
+  opacity: 0;
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.reveal-on-scroll {
+  opacity: 0;
+}
+.reveal-on-scroll.active {
+  animation: slideUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes floaty {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+.animate-floaty {
+  animation: floaty 4s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.progress-fill {
+  transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-card-hover {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.animate-card-hover:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 25px -5px rgba(0, 37, 118, 0.15),
+    0 10px 10px -5px rgba(0, 37, 118, 0.06);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--outline-variant);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--outline);
+}
+
+/* Claymorphism utilities — institutional / marketing surfaces */
 .clay-surface {
   box-shadow:
     2px 2px 12px rgba(0, 0, 0, 0.06),
@@ -127,8 +305,13 @@ body {
 }
 
 @keyframes gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .animate-gradient-text {
@@ -136,30 +319,28 @@ body {
   animation: gradient-shift 4s ease-in-out infinite;
 }
 
-/* Portal role tokens */
+/* Portal role tokens — student follows FRONT ZIP (blue primary) */
 [data-portal='student'] {
-  --portal-accent: var(--utb-orange);
+  --portal-accent: var(--primary);
   --portal-radius: 1rem;
 }
 [data-portal='institutional'] {
-  --portal-accent: var(--utb-blue);
-  --portal-radius: 0.25rem;
+  --portal-accent: var(--primary);
+  --portal-radius: 0.5rem;
 }
 [data-portal='platform'] {
   --portal-accent: var(--privacy);
-  --portal-radius: 0.25rem;
+  --portal-radius: 0.5rem;
 }
 
 .portal-main-bg {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--portal-accent) 4%, var(--bg)) 0%,
-    var(--bg) 120px
-  );
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -167,5 +348,8 @@ body {
   .animate-gradient-text {
     animation: none;
     background-position: 0% 50%;
+  }
+  .animate-floaty {
+    animation: none;
   }
 }

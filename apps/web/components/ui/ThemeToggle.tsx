@@ -17,7 +17,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       <button
         type="button"
         aria-label="Cambiar tema"
-        className="rounded-lg p-2 text-zinc-400 hover:bg-brand-surface hover:text-white"
+        className="rounded-lg p-2 text-zinc-400 hover:bg-brand-surface hover:text-foreground"
       >
         <Sun className="h-4 w-4" />
       </button>

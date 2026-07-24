@@ -4,9 +4,21 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { Button, Card, Input } from '@/components/ui';
 import { PrivacyBanner } from '@/components/ui/PrivacyBanner';
 import { LazyMarkdownMessage } from '@/components/ui/LazyMarkdownMessage';
-import { BentoCell } from '@/components/ui/BentoGrid';
-import { Send, Plus, MessageSquare, Heart, Loader2, Phone, AlertCircle, UserRound } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Bot,
+  Brain,
+  ChevronDown,
+  Heart,
+  MessageSquare,
+  Plus,
+  Send,
+  User,
+  UserRound,
+} from 'lucide-react';
 import { proxyJson, proxyStream, type HandoffPayload } from '@/lib/proxy';
+import { cn } from '@/lib/utils';
 
 interface Chat {
   id: string;
@@ -24,7 +36,14 @@ interface Message {
   content: string;
   author?: MessageAuthor;
 }
-interface SelfHelp { id: string; title: string; description?: string; url?: string }
+interface SelfHelp {
+  id: string;
+  title: string;
+  description?: string;
+  url?: string;
+}
+
+type CompanionMode = 'twin' | 'human';
 
 const PSYCHOLOGIST_EMAIL = 'psicologo@utb.edu.co';
 
@@ -33,6 +52,7 @@ export default function TwinChatPage() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [handoffMode, setHandoffMode] = useState<'ai' | 'human' | 'resolved'>('ai');
+  const [companionMode, setCompanionMode] = useState<CompanionMode>('twin');
   const [counselor, setCounselor] = useState<MessageAuthor | null>(null);
   const [waitingForCounselor, setWaitingForCounselor] = useState(false);
   const [input, setInput] = useState('');
@@ -44,47 +64,95 @@ export default function TwinChatPage() {
   const [error, setError] = useState('');
   const [privacyNotice, setPrivacyNotice] = useState('');
   const [limitReached, setLimitReached] = useState(false);
+  const [mobileListOpen, setMobileListOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const activeChatRef = useRef<string | null>(null);
+  const streamingChatRef = useRef<string | null>(null);
 
-  useEffect(() => { loadChats(); }, []);
-  useEffect(() => { if (activeChat) loadMessages(activeChat); }, [activeChat]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, waitingForCounselor]);
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
+    loadChats();
+  }, []);
+
+  useEffect(() => {
+    if (activeChat) loadMessages(activeChat);
+  }, [activeChat]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, waitingForCounselor]);
 
   useEffect(() => {
     if (handoffMode !== 'human' || !activeChat) return;
-    const t = setInterval(() => { loadMessages(activeChat, true); }, 15000);
+    const t = setInterval(() => {
+      loadMessages(activeChat, true);
+    }, 15000);
     return () => clearInterval(t);
   }, [handoffMode, activeChat]);
 
-  const applyHandoff = useCallback((payload: HandoffPayload) => {
+  const applyHandoff = useCallback((payload: HandoffPayload, chatId?: string | null) => {
+    const target = chatId ?? activeChatRef.current;
+    if (target !== activeChatRef.current) return;
     setHandoffMode('human');
+    setCompanionMode('human');
     setCounselor(payload.counselor);
     setWaitingForCounselor(true);
-    setChats((prev) => prev.map((c) => (
-      c.id === activeChat ? { ...c, handoff_mode: 'human' } : c
-    )));
-  }, [activeChat]);
+    setChats((prev) =>
+      prev.map((c) => (c.id === target ? { ...c, handoff_mode: 'human' } : c)),
+    );
+  }, []);
+
+  function resetLocalChatState() {
+    setMood(null);
+    setPrivacyNotice('');
+    setError('');
+    setSupportReason('');
+    setShowSupport(false);
+    setInput('');
+  }
+
+  function selectChat(chat: Chat) {
+    if (streaming && streamingChatRef.current === activeChat) return;
+    resetLocalChatState();
+    setMessages([]);
+    setActiveChat(chat.id);
+    const mode = (chat.handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
+    setHandoffMode(mode);
+    setCompanionMode(mode === 'human' || mode === 'resolved' ? 'human' : 'twin');
+    setMobileListOpen(false);
+  }
 
   async function loadSelfHelpFromConversation(msgs: Message[], latest?: string) {
     try {
-      const recent = msgs.filter((m) => m.role === 'user').slice(-3).map((m) => m.content).join(' ');
+      const recent = msgs
+        .filter((m) => m.role === 'user')
+        .slice(-3)
+        .map((m) => m.content)
+        .join(' ');
       const query = (recent || latest || 'bienestar').slice(0, 200);
       let data = await proxyJson<SelfHelp[]>(`/self-help?topic=${encodeURIComponent(query)}`);
       if ((!Array.isArray(data) || data.length === 0) && query !== 'bienestar') {
         data = await proxyJson<SelfHelp[]>('/self-help?topic=bienestar');
       }
       setSelfHelp(Array.isArray(data) ? data.slice(0, 4) : []);
-    } catch { /* optional */ }
+    } catch {
+      /* optional */
+    }
   }
 
   async function loadChats() {
     try {
       const data = await proxyJson<Chat[]>('/chats?chat_type=digital_twin');
-      setChats(data || []);
-      if (data?.[0]) {
-        setActiveChat(data[0].id);
-        const mode = (data[0].handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
+      const list = Array.isArray(data) ? data : [];
+      setChats(list);
+      if (list[0]) {
+        setActiveChat(list[0].id);
+        const mode = (list[0].handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
         setHandoffMode(mode);
+        setCompanionMode(mode === 'human' || mode === 'resolved' ? 'human' : 'twin');
       } else {
         const chat = await proxyJson<Chat>('/chats', {
           method: 'POST',
@@ -93,6 +161,7 @@ export default function TwinChatPage() {
         setChats([chat]);
         setActiveChat(chat.id);
         setHandoffMode('ai');
+        setCompanionMode('twin');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar chats');
@@ -104,6 +173,7 @@ export default function TwinChatPage() {
       const data = await proxyJson<{ chat?: { handoff_mode?: string }; messages?: Message[] } | Message[]>(
         `/chats/${chatId}/messages`,
       );
+      if (activeChatRef.current !== chatId) return;
       let list: Message[] = [];
       let mode: 'ai' | 'human' | 'resolved' = 'ai';
       if (Array.isArray(data)) {
@@ -112,6 +182,7 @@ export default function TwinChatPage() {
         list = data.messages || [];
         mode = (data.chat?.handoff_mode || 'ai') as 'ai' | 'human' | 'resolved';
         setHandoffMode(mode);
+        setCompanionMode(mode === 'human' || mode === 'resolved' ? 'human' : 'twin');
       }
       setMessages(list);
       setLimitReached(list.filter((m) => m.role === 'user').length >= 15);
@@ -124,23 +195,26 @@ export default function TwinChatPage() {
       }
       if (!silent) loadSelfHelpFromConversation(list);
     } catch {
-      if (!silent) setMessages([]);
+      if (!silent && activeChatRef.current === chatId) setMessages([]);
     }
   }
 
   async function newChat() {
+    if (streaming) return;
     const chat = await proxyJson<Chat>('/chats', {
       method: 'POST',
       body: JSON.stringify({ title: 'Nueva conversación', chat_type: 'digital_twin' }),
     });
+    resetLocalChatState();
     setChats((c) => [chat, ...c]);
     setActiveChat(chat.id);
     setMessages([]);
     setHandoffMode('ai');
+    setCompanionMode('twin');
     setCounselor(null);
     setWaitingForCounselor(false);
     setLimitReached(false);
-    setError('');
+    setMobileListOpen(false);
   }
 
   async function requestHumanHandoff(reason?: string) {
@@ -150,24 +224,51 @@ export default function TwinChatPage() {
         method: 'POST',
         body: JSON.stringify({ reason: reason || 'Prefiero hablar con una persona' }),
       });
-      applyHandoff(payload);
+      applyHandoff(payload, activeChat);
+      setShowSupport(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo conectar con bienestar');
     }
   }
 
+  async function selectCompanionMode(mode: CompanionMode) {
+    if (mode === 'twin') {
+      if (handoffMode === 'human' || handoffMode === 'resolved') {
+        await newChat();
+        return;
+      }
+      setCompanionMode('twin');
+      return;
+    }
+    setCompanionMode('human');
+    if (handoffMode === 'ai' && activeChat) {
+      setShowSupport(true);
+    }
+  }
+
   async function send() {
     if (!input.trim() || !activeChat || streaming || limitReached || handoffMode === 'resolved') return;
+    const chatId = activeChat;
     const content = input.trim();
     setInput('');
     const nextMsgs = [...messages, { id: `u-${Date.now()}`, role: 'user', content }];
     setMessages(nextMsgs);
     setStreaming(true);
+    streamingChatRef.current = chatId;
     setError('');
+
+    // Auto-title first user message for this conversation
+    const isFirstUser = messages.filter((m) => m.role === 'user').length === 0;
+    if (isFirstUser) {
+      const title = content.length > 42 ? `${content.slice(0, 42)}…` : content;
+      setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, title } : c)));
+    }
+
     let assistant = '';
     try {
-      const result = await proxyStream(`/chats/${activeChat}/messages`, { content }, {
+      const result = await proxyStream(`/chats/${chatId}/messages`, { content }, {
         onToken: (token) => {
+          if (activeChatRef.current !== chatId) return;
           assistant += token;
           setMessages((m) => {
             const copy = [...m];
@@ -180,28 +281,32 @@ export default function TwinChatPage() {
             return copy;
           });
         },
-        onHandoffWaiting: (payload) => applyHandoff(payload),
+        onHandoffWaiting: (payload) => applyHandoff(payload, chatId),
         onGuardrail: (payload) => {
+          if (activeChatRef.current !== chatId) return;
           if (payload.privacy_notice) setPrivacyNotice(payload.privacy_notice);
         },
       });
-      if (result.handoff) applyHandoff(result.handoff);
-      // If tokens never arrived but done/fallback returned content, paint the bubble.
+
+      if (activeChatRef.current !== chatId) return;
+
+      if (result.handoff) applyHandoff(result.handoff, chatId);
       if (!assistant.trim() && result.content?.trim()) {
         assistant = result.content.trim();
         setMessages((m) => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: assistant }]);
       }
-      // Proxy/backend unavailable → escalate to psychologist (same as LLM exhaustion).
       if (result.needsHandoff && !result.handoff) {
         await requestHumanHandoff('LLM/proxy no disponible; escalado a bienestar');
       }
       const userCount = nextMsgs.filter((m) => m.role === 'user').length;
       if (userCount >= 15) setLimitReached(true);
       loadSelfHelpFromConversation(nextMsgs, content);
-      if (activeChat) loadMessages(activeChat, true);
+      loadMessages(chatId, true);
     } catch (e) {
+      if (activeChatRef.current !== chatId) return;
       const msg = e instanceof Error ? e.message : '';
-      const status = e && typeof e === 'object' && 'status' in e ? Number((e as { status: number }).status) : 0;
+      const status =
+        e && typeof e === 'object' && 'status' in e ? Number((e as { status: number }).status) : 0;
       if (
         status === 409 ||
         msg.includes('409') ||
@@ -211,6 +316,7 @@ export default function TwinChatPage() {
       ) {
         if (msg.toLowerCase().includes('cerrada')) {
           setHandoffMode('resolved');
+          setCompanionMode('human');
           setError('Esta conversación fue cerrada. Inicia una conversación nueva para continuar.');
         } else {
           setLimitReached(true);
@@ -225,8 +331,12 @@ export default function TwinChatPage() {
         setError('');
         await requestHumanHandoff('Error de red en el chat; escalado a bienestar');
       }
+    } finally {
+      if (streamingChatRef.current === chatId) {
+        streamingChatRef.current = null;
+        setStreaming(false);
+      }
     }
-    setStreaming(false);
   }
 
   async function submitMood(score: number) {
@@ -237,193 +347,396 @@ export default function TwinChatPage() {
   async function requestSupport() {
     await proxyJson('/support-requests', {
       method: 'POST',
-      body: JSON.stringify({ chat_id: activeChat, reason: supportReason || 'Solicitud de apoyo psicológico' }),
+      body: JSON.stringify({
+        chat_id: activeChat,
+        reason: supportReason || 'Solicitud de apoyo psicológico',
+      }),
     });
-    applyHandoff({
-      handoff_mode: 'human',
-      counselor: {
-        full_name: counselor?.full_name || 'Equipo de bienestar UTB',
-        email: counselor?.email || PSYCHOLOGIST_EMAIL,
-      },
-    });
-    setShowSupport(false);
+    await requestHumanHandoff(supportReason || 'Solicitud de apoyo psicológico');
     setSupportReason('');
   }
 
   const counselorLabel = counselor?.full_name || 'Equipo de bienestar UTB';
   const counselorEmail = counselor?.email || PSYCHOLOGIST_EMAIL;
   const chatClosed = handoffMode === 'resolved';
+  const MOODS = [
+    { score: 5, emoji: '🤩', label: 'Emocionado' },
+    { score: 4, emoji: '😊', label: 'Feliz' },
+    { score: 3, emoji: '😐', label: 'Neutral' },
+    { score: 2, emoji: '😴', label: 'Cansado' },
+    { score: 1, emoji: '🤯', label: 'Estresado' },
+  ];
+
+  const chatList = (
+    <>
+      <button
+        type="button"
+        onClick={newChat}
+        disabled={streaming}
+        className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-primary-container active:scale-95 disabled:opacity-50"
+      >
+        <Plus className="h-4 w-4" /> Nueva conversación
+      </button>
+      <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+        Continúa esta conversación
+      </p>
+      <div className="hide-scrollbar flex-1 space-y-1 overflow-y-auto">
+        {chats.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            disabled={streaming && streamingChatRef.current === activeChat && c.id !== activeChat}
+            onClick={() => selectChat(c)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors disabled:opacity-50',
+              activeChat === c.id
+                ? 'bg-primary/10 text-primary'
+                : 'text-on-surface-variant hover:bg-surface-container-low',
+            )}
+          >
+            <MessageSquare className="h-4 w-4 shrink-0" />
+            <span className="truncate">{c.title}</span>
+            {c.handoff_mode === 'human' && (
+              <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Con psicólogo" />
+            )}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 
   return (
-    <div className="space-y-4">
-      <PrivacyBanner />
-      {privacyNotice && (
-        <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm">
-          {privacyNotice}
-        </div>
-      )}
-      {handoffMode === 'human' && (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4">
-          <UserRound className="h-5 w-5 text-emerald-500 shrink-0" />
-          <div className="flex-1 text-sm">
-            <p className="font-medium">Estás conversando con Bienestar UTB</p>
-            <p className="text-xs text-muted">{counselorLabel} · {counselorEmail}</p>
-          </div>
-        </div>
-      )}
-      {chatClosed && (
-        <div className="flex items-center gap-3 rounded-lg border border-zinc-500/40 bg-zinc-500/10 p-4">
-          <AlertCircle className="h-5 w-5 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">Conversación cerrada por bienestar</p>
-            <p className="text-xs text-muted">Inicia un chat nuevo si necesitas seguir conversando.</p>
-          </div>
-          <Button size="sm" onClick={newChat}><Plus className="h-4 w-4 mr-1" />Nuevo chat</Button>
-        </div>
-      )}
-      {limitReached && !chatClosed && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">Límite de conversación alcanzado</p>
-            <p className="text-xs text-muted">Para continuar el acompañamiento, inicia un chat nuevo.</p>
-          </div>
-          <Button size="sm" onClick={newChat}><Plus className="h-4 w-4 mr-1" />Nuevo chat</Button>
-        </div>
-      )}
-      <div className="flex flex-col gap-4 lg:flex-row lg:h-[calc(100vh-10rem)]">
-        <aside className="w-full lg:w-48 shrink-0 space-y-2">
-          <Button size="sm" variant="secondary" onClick={newChat} className="w-full">
-            <Plus className="h-4 w-4 mr-1" /> Nueva
-          </Button>
-          {chats.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => {
-                setActiveChat(c.id);
-                setHandoffMode((c.handoff_mode || 'ai') as 'ai' | 'human' | 'resolved');
-              }}
-              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-                activeChat === c.id ? 'bg-brand-amber/10 text-brand-amber' : 'hover:bg-brand-bg'
-              }`}
-            >
-              <MessageSquare className="h-4 w-4 shrink-0" />
-              <span className="truncate">{c.title}</span>
-              {c.handoff_mode === 'human' && (
-                <span className="ml-auto h-2 w-2 rounded-full bg-emerald-500 shrink-0" title="Con psicólogo" />
-              )}
-            </button>
-          ))}
-        </aside>
+    <div className="flex h-screen flex-col pt-16 md:flex-row">
+      <aside className="glass-card hidden w-56 shrink-0 flex-col border-r border-outline-variant/10 p-4 lg:flex">
+        {chatList}
+      </aside>
 
-        <BentoCell className="flex flex-1 flex-col min-h-[400px] overflow-hidden">
-          <div className="flex-1 overflow-y-auto space-y-4 p-2">
-            {messages.length === 0 && (
-              <p className="text-center text-zinc-500 py-12">
-                <Heart className="mx-auto h-8 w-8 text-brand-amber mb-2" />
-                Este es tu espacio seguro. ¿Cómo te sientes hoy?
-              </p>
+      <section className="flex min-w-0 flex-1 flex-col">
+        <div className="glass-card flex flex-col gap-4 border-b border-outline-variant/10 px-5 py-4">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="animate-floaty flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-on-primary shadow-lg">
+                  {companionMode === 'human' ? <UserRound className="h-6 w-6" /> : <Bot className="h-6 w-6" />}
+                </div>
+                <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-surface bg-green-500" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold text-primary">
+                  {companionMode === 'human' ? 'Bienestar UTB' : 'Tu Twin UTB'}
+                </h1>
+                <p className="text-xs text-on-surface-variant">
+                  {companionMode === 'human' || handoffMode === 'human'
+                    ? `Conectado con ${counselorLabel}`
+                    : 'Activo ahora • Acompañamiento personalizado'}
+                </p>
+              </div>
+            </div>
+
+            {/* Twin UTB | Humano toggle */}
+            <div className="relative flex w-full max-w-md rounded-xl bg-surface-container-low p-1 md:w-auto md:min-w-[320px]">
+              <span
+                className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg bg-surface-container-lowest shadow-sm transition-transform duration-300 ease-out dark:bg-surface-container-highest"
+                style={{
+                  transform: companionMode === 'human' ? 'translateX(100%)' : 'translateX(0)',
+                }}
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={() => selectCompanionMode('twin')}
+                disabled={streaming}
+                className={cn(
+                  'relative z-10 flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-center text-sm font-semibold transition-colors disabled:opacity-50',
+                  companionMode === 'twin' ? 'text-primary' : 'text-on-surface-variant',
+                )}
+              >
+                <Brain className="h-4 w-4" />
+                Twin UTB
+              </button>
+              <button
+                type="button"
+                onClick={() => selectCompanionMode('human')}
+                disabled={streaming || chatClosed}
+                className={cn(
+                  'relative z-10 flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-center text-sm font-semibold transition-colors disabled:opacity-50',
+                  companionMode === 'human' ? 'text-primary' : 'text-on-surface-variant',
+                )}
+              >
+                <UserRound className="h-4 w-4" />
+                Hablar con un humano
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile chat picker */}
+          <div className="lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileListOpen((o) => !o)}
+              className="flex w-full items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm font-semibold text-on-surface"
+            >
+              <span className="truncate">
+                {chats.find((c) => c.id === activeChat)?.title || 'Conversaciones'}
+              </span>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', mobileListOpen && 'rotate-180')} />
+            </button>
+            {mobileListOpen && (
+              <div className="glass-card mt-2 max-h-56 overflow-y-auto rounded-xl p-3">{chatList}</div>
             )}
-            {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                  m.role === 'user'
-                    ? 'bg-brand-amber/20'
-                    : m.role === 'counselor'
-                      ? 'border border-emerald-500/30 bg-emerald-500/5'
-                      : 'border border-brand-border bg-brand-bg'
-                }`}>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest/60 p-1.5">
+            <span className="px-2 text-xs font-bold text-on-surface-variant">¿Cómo te sientes?</span>
+            {MOODS.map((m) => (
+              <button
+                key={m.label}
+                type="button"
+                title={m.label}
+                aria-label={m.label}
+                onClick={() => submitMood(m.score)}
+                className={cn(
+                  'rounded-xl p-2 text-lg transition-all hover:scale-110 active:scale-95',
+                  mood === m.score ? 'bg-primary/10 ring-2 ring-primary/40' : 'hover:bg-primary/10',
+                )}
+              >
+                {m.emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 px-5 pt-3">
+          <PrivacyBanner />
+          {privacyNotice && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm text-indigo-900 dark:text-indigo-200">
+              {privacyNotice}
+            </div>
+          )}
+          {handoffMode === 'human' && (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+              <UserRound className="h-5 w-5 shrink-0 text-emerald-500" />
+              <div className="flex-1 text-sm">
+                <p className="font-medium">Estás conversando con Bienestar UTB</p>
+                <p className="text-xs text-on-surface-variant">
+                  {counselorLabel} · {counselorEmail}
+                </p>
+              </div>
+            </div>
+          )}
+          {(chatClosed || limitReached) && (
+            <div className="flex items-center gap-3 rounded-xl border border-outline-variant/40 bg-surface-container-low p-4">
+              <AlertCircle className="h-5 w-5 shrink-0 text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">
+                  {chatClosed ? 'Conversación cerrada por bienestar' : 'Límite de conversación alcanzado'}
+                </p>
+                <p className="text-xs text-on-surface-variant">
+                  Inicia un chat nuevo con Twin UTB para continuar.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={newChat}
+                className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-on-primary"
+              >
+                <Plus className="mr-1 inline h-4 w-4" />
+                Twin UTB
+              </button>
+            </div>
+          )}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        </div>
+
+        <div className="hide-scrollbar flex-1 space-y-6 overflow-y-auto p-5">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center py-16 text-center">
+              <Heart className="mb-3 h-10 w-10 text-primary" />
+              <p className="text-on-surface-variant">
+                Este es tu espacio seguro con Twin UTB. Cada conversación guarda su propio contexto.
+              </p>
+            </div>
+          )}
+
+          {messages.map((m) =>
+            m.role === 'user' ? (
+              <div key={m.id} className="ml-auto flex max-w-[85%] flex-row-reverse gap-3 lg:max-w-[70%]">
+                <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <User className="h-[18px] w-[18px] text-on-primary" />
+                </div>
+                <div className="rounded-2xl rounded-br-sm bg-primary p-4 text-on-primary shadow-md">
+                  <p className="leading-relaxed">{m.content}</p>
+                </div>
+              </div>
+            ) : (
+              <div key={m.id} className="flex max-w-[85%] gap-3 lg:max-w-[70%]">
+                <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-container">
+                  <Brain className="h-[18px] w-[18px] text-on-primary" />
+                </div>
+                <div
+                  className={cn(
+                    'glass-card w-full rounded-2xl rounded-bl-sm p-4 shadow-sm',
+                    m.role === 'counselor' && 'border border-emerald-500/30',
+                  )}
+                >
                   {m.role === 'counselor' && (
-                    <p className="mb-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <p className="mb-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                       {m.author?.full_name || counselorLabel} · {m.author?.email || counselorEmail}
                     </p>
                   )}
-                  {m.role === 'assistant' || m.role === 'counselor' ? (
+                  <div className="leading-relaxed text-on-surface">
                     <LazyMarkdownMessage content={m.content} />
-                  ) : (
-                    m.content
-                  )}
+                  </div>
                 </div>
               </div>
-            ))}
-            {waitingForCounselor && handoffMode === 'human' && !streaming && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-muted">
-                  Mensaje enviado. Un psicólogo te responderá aquí mismo en este chat.
-                </div>
-              </div>
-            )}
-            {streaming && <Loader2 className="h-5 w-5 animate-spin text-brand-amber" />}
-            <div ref={bottomRef} />
-          </div>
-          <div className="border-t border-brand-border p-3 space-y-2">
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} type="button" title={`Ánimo ${s}/5`} onClick={() => submitMood(s)}
-                  className={`text-lg ${mood === s ? 'scale-125' : 'opacity-50 hover:opacity-100'}`}>
-                  {['😔', '😕', '😐', '🙂', '😊'][s - 1]}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={handoffMode === 'human' ? 'Escribe al psicólogo…' : 'Escribe aquí…'}
-                onKeyDown={(e) => e.key === 'Enter' && send()}
-                disabled={limitReached || chatClosed}
-              />
-              <Button onClick={send} disabled={streaming || limitReached || chatClosed}><Send className="h-4 w-4" /></Button>
-            </div>
-            {handoffMode === 'ai' && (
-              <Button variant="secondary" size="sm" onClick={() => requestHumanHandoff()} className="w-full">
-                <UserRound className="h-4 w-4 mr-2" /> Prefiero hablar con una persona
-              </Button>
-            )}
-            <Button variant="secondary" size="sm" onClick={() => setShowSupport(true)} className="w-full" disabled={chatClosed}>
-              <Phone className="h-4 w-4 mr-2" /> Solicitar apoyo humano
-            </Button>
-          </div>
-        </BentoCell>
+            ),
+          )}
 
-        <aside className="w-full lg:w-64 shrink-0">
-          <Card>
-            <h3 className="font-semibold text-sm mb-3">Recursos de autoayuda</h3>
+          {waitingForCounselor && handoffMode === 'human' && !streaming && (
+            <div className="flex max-w-[70%] gap-3">
+              <div className="glass-card rounded-2xl rounded-bl-sm px-5 py-4 text-sm text-on-surface-variant shadow-sm">
+                Mensaje enviado. Un psicólogo te responderá aquí mismo en este chat.
+              </div>
+            </div>
+          )}
+
+          {streaming && (
+            <div className="flex max-w-[70%] gap-3">
+              <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-container">
+                <Brain className="h-[18px] w-[18px] text-on-primary" />
+              </div>
+              <div className="glass-card flex items-center gap-1.5 rounded-2xl rounded-bl-sm px-5 py-4 shadow-sm">
+                <span className="typing-dot h-2 w-2 rounded-full bg-primary" style={{ animationDelay: '0ms' }} />
+                <span className="typing-dot h-2 w-2 rounded-full bg-primary" style={{ animationDelay: '200ms' }} />
+                <span className="typing-dot h-2 w-2 rounded-full bg-primary" style={{ animationDelay: '400ms' }} />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="space-y-3 p-5 pt-0">
+          <div className="glass-input mx-auto flex max-w-4xl items-end gap-2 rounded-[24px] p-2 shadow-lg">
+            <button
+              type="button"
+              aria-label="Nueva conversación"
+              onClick={newChat}
+              disabled={streaming}
+              className="p-3 text-on-surface-variant transition-colors hover:text-primary disabled:opacity-50"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+            <textarea
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={
+                companionMode === 'human' || handoffMode === 'human'
+                  ? 'Escribe al equipo de bienestar…'
+                  : 'Escribe un mensaje a Twin UTB…'
+              }
+              disabled={limitReached || chatClosed || streaming}
+              className="max-h-32 flex-1 resize-none border-none bg-transparent py-3 focus:outline-none disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={send}
+              aria-label="Enviar mensaje"
+              disabled={streaming || limitReached || chatClosed}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-on-primary shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+            >
+              <Send className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <aside className="glass-card hidden h-full w-80 flex-col border-l border-outline-variant/10 xl:flex">
+        <div className="border-b border-outline-variant/10 p-6">
+          <h3 className="mb-1 text-2xl font-semibold text-primary">Recursos</h3>
+          <p className="text-xs text-on-surface-variant">Recomendados para tu camino</p>
+        </div>
+        <div className="hide-scrollbar flex-1 space-y-6 overflow-y-auto p-6">
+          <div>
+            <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-on-surface">
+              <Heart className="h-5 w-5 text-primary" />
+              Bienestar
+            </h4>
             {selfHelp.length === 0 ? (
-              <p className="text-xs text-zinc-500">Los recursos cambian según tu conversación.</p>
+              <p className="text-xs text-on-surface-variant">
+                Los recursos cambian según tu conversación.
+              </p>
             ) : (
-              <ul className="space-y-2">
+              <div className="space-y-3">
                 {selfHelp.map((r) => (
-                  <li key={r.id} className="text-sm">
-                    <p className="font-medium">{r.title}</p>
+                  <div
+                    key={r.id}
+                    className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest/60 p-3"
+                  >
+                    <p className="text-sm font-bold text-primary">{r.title}</p>
+                    {r.description && (
+                      <p className="mt-1 text-xs text-on-surface-variant">{r.description}</p>
+                    )}
                     {r.url && (
-                      <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-amber hover:underline">
-                        Ver recurso
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline"
+                      >
+                        Abrir recurso <ArrowRight className="h-4 w-4" />
                       </a>
                     )}
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
-          </Card>
-        </aside>
-      </div>
+          </div>
+        </div>
+        <div className="bg-surface-container-highest/30 p-6">
+          <button
+            type="button"
+            onClick={() => selectCompanionMode('human')}
+            disabled={chatClosed || streaming}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-lowest py-3 text-on-surface shadow-sm transition-colors hover:bg-surface-container disabled:opacity-50"
+          >
+            <User className="h-5 w-5" />
+            Hablar con un humano
+          </button>
+        </div>
+      </aside>
 
       {showSupport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <Card className="w-full max-w-md space-y-4">
-            <h3 className="font-semibold">Solicitar apoyo humano</h3>
+            <h3 className="font-semibold text-primary">Hablar con un humano</h3>
             <PrivacyBanner message="Con tu consentimiento, un psicólogo de bienestar UTB te responderá en este mismo chat." />
-            <Input value={supportReason} onChange={(e) => setSupportReason(e.target.value)} placeholder="Motivo (opcional)" />
+            <Input
+              value={supportReason}
+              onChange={(e) => setSupportReason(e.target.value)}
+              placeholder="Motivo (opcional)"
+            />
             <div className="flex gap-2">
-              <Button onClick={requestSupport}>Conectar con psicólogo</Button>
-              <Button variant="secondary" onClick={() => setShowSupport(false)}>Cancelar</Button>
+              <Button onClick={requestSupport}>Conectar con bienestar</Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowSupport(false);
+                  if (handoffMode === 'ai') setCompanionMode('twin');
+                }}
+              >
+                Cancelar
+              </Button>
             </div>
           </Card>
         </div>
       )}
-      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }

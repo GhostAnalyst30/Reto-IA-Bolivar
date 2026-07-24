@@ -14,3 +14,5 @@ venv
 *.log
 .vercel
 DOCUMENTATION.md
+.front-ref
+FRONT ZIP.zip

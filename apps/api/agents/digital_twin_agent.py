@@ -88,7 +88,7 @@ Perfil Digital Twin:
         system += "\n\nRecursos de autoayuda disponibles:\n" + "\n".join(resource_lines)
 
     messages = [{"role": "system", "content": system}]
-    for msg in history[-12:]:
+    for msg in history[-20:]:
         role = msg["role"]
         if role == "counselor":
             role = "assistant"
