@@ -17,13 +17,13 @@ services:
       - key: OPENROUTER_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: LLM_MODEL_TUTOR
-        value: openai/gpt-oss-120b:free
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
       - key: LLM_MODEL_DIRECTOR
-        value: google/gemma-4-31b-it:free
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
       - key: LLM_MODEL_PATH
-        value: google/gemma-4-31b-it:free
+        value: cohere/north-mini-code:free
       - key: LLM_OPENROUTER_FREE_MODELS
-        value: openai/gpt-oss-120b:free,google/gemma-4-31b-it:free,meta-llama/llama-3.2-3b-instruct:free,qwen/qwen-2.5-7b-instruct:free,google/gemini-2.0-flash-exp:free
+        value: nvidia/nemotron-3-ultra-550b-a55b:free,cohere/north-mini-code:free,google/gemma-4-31b-it:free,openai/gpt-oss-20b:free,openrouter/free
       - key: LLM_MAX_OPENROUTER_ATTEMPTS
         value: "5"
       - key: LLM_PROVIDER

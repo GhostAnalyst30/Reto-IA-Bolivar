@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from core.config import settings
 from core.tasks import prune_old_jobs
-from routes import register, admin_requests, student, institutional, platform_admin, profile, psychometric, counselor, retention, opportunities, sessions
+from routes import register, admin_requests, student, institutional, platform_admin, profile, psychometric, counselor, retention, opportunities, sessions, appointments, vocational
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ app.include_router(psychometric.router)
 app.include_router(opportunities.router)
 app.include_router(opportunities.admin_router)
 app.include_router(sessions.router)
+app.include_router(appointments.router)
+app.include_router(vocational.router)
 
 
 @app.exception_handler(Exception)

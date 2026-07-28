@@ -9,7 +9,7 @@ from core.config import settings
 from core.security_monitor import log_security_event
 
 ChatType = Literal["digital_twin", "institutional", "privileged"]
-GuardrailAction = Literal["pass", "block", "redirect", "handoff", "sanitize"]
+GuardrailAction = Literal["pass", "block", "redirect", "handoff", "sanitize", "offer_appointment"]
 
 SAFE_FALLBACK = (
     "Lo siento, no puedo procesar esa solicitud. "
@@ -17,9 +17,15 @@ SAFE_FALLBACK = (
 )
 
 CRISIS_MESSAGE = (
-    "Gracias por confiar y escribirme. Lo que sientes es importante y no estás solo/a. "
-    "Un psicólogo del equipo de bienestar UTB te acompañará en este mismo chat. "
-    "Si necesitas ayuda inmediata, contacta a la línea 106 en Colombia o acude al servicio de urgencias más cercano."
+    "Entiendo que estás pasando por un momento difícil. Es muy valiente buscar ayuda. "
+    "Recuerda que la Universidad Tecnológica de Bolívar cuenta con profesionales de psicología "
+    "que pueden brindarte un apoyo especializado y confidencial. Me gustaría ayudarte a contactar con ellos. "
+    "¿Te gustaría que te facilitara la información para que puedas agendar una cita o hablar con alguien directamente?"
+)
+
+CRISIS_URGENT_SUFFIX = (
+    "\n\nSi necesitas ayuda inmediata, contacta a la línea **106** en Colombia "
+    "o acude al servicio de urgencias más cercano."
 )
 
 REDIRECT_OFF_TOPIC = (
@@ -79,6 +85,20 @@ _CRISIS_PATTERNS = [
         r"\b(hacerme\s+daño|autolesión|autolesion|cortarme)\b",
         r"\b(no\s+val[eé]\s+la\s+pena\s+vivir)\b",
         r"\b(acabar\s+con\s+(todo|mi\s+vida))\b",
+        r"\b(desesperanz|sin\s+esperanza|ya\s+no\s+puedo\s+m[aá]s)\b",
+        r"\b(muy\s+(angustiad[oa]|deprimid[oa])|me\s+siento\s+(angustiad[oa]|deprimid[oa]))\b",
+        r"\b(pensamientos?\s+de\s+(muerte|autolesi[oó]n|hacerme\s+da[nñ]o))\b",
+    )
+]
+
+_PROFESSIONAL_HELP_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"\b(quiero|necesito|deseo)\s+(hablar|hablarle|contactar)\s+(con\s+)?(un[oa]?\s+)?(psic[oó]log[oa]|terapeuta|profesional)\b",
+        r"\bnecesito\s+ayuda\s+profesional\b",
+        r"\b(agendar|pedir|solicitar)\s+(una\s+)?cita\s+(con\s+)?(psicolog|bienestar)\b",
+        r"\bhablar\s+con\s+(el\s+)?psic[oó]log[oa]\b",
+        r"\bayuda\s+de\s+un\s+psic[oó]log[oa]\b",
     )
 ]
 
@@ -174,6 +194,7 @@ class GuardrailResult:
     severity: str = "low"
     redacted_input: str | None = None
     privacy_notice: str | None = None
+    offer_appointment: bool = False
 
 
 def detect_sensitive_entities(text: str) -> list[SensitiveMatch]:
@@ -307,13 +328,25 @@ def check_input(
         )
 
     if chat_type == "digital_twin" and _matches_any(stripped, _CRISIS_PATTERNS):
-        _log_guardrail("guardrail_crisis", "critical", user_id, chat_type, ["crisis"])
+        _log_guardrail("guardrail_crisis", "critical", user_id, chat_type, ["crisis", "offer_appointment"])
         return GuardrailResult(
             allowed=False,
             action="handoff",
-            user_message=CRISIS_MESSAGE,
-            flags=["crisis"],
+            user_message=CRISIS_MESSAGE + CRISIS_URGENT_SUFFIX,
+            flags=["crisis", "offer_appointment"],
             severity="critical",
+            offer_appointment=True,
+        )
+
+    if chat_type == "digital_twin" and _matches_any(stripped, _PROFESSIONAL_HELP_PATTERNS):
+        _log_guardrail("professional_help_request", "high", user_id, chat_type, ["professional_help", "offer_appointment"])
+        return GuardrailResult(
+            allowed=False,
+            action="offer_appointment",
+            user_message=CRISIS_MESSAGE,
+            flags=["professional_help", "offer_appointment"],
+            severity="high",
+            offer_appointment=True,
         )
 
     if chat_type == "digital_twin" and _matches_any(stripped, _OFF_TOPIC_PATTERNS):

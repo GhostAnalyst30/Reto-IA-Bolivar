@@ -93,6 +93,7 @@ export interface StreamCallbacks {
   onToken?: (token: string) => void;
   onHandoffWaiting?: (payload: HandoffPayload) => void;
   onGuardrail?: (payload: { action?: string; privacy_notice?: string; flags?: string[] }) => void;
+  onOfferAppointment?: () => void;
 }
 
 function softTwinHandoffResult(
@@ -106,7 +107,13 @@ export async function proxyStream(
   path: string,
   body: object,
   callbacks: StreamCallbacks | ((token: string) => void),
-): Promise<{ content: string; handoff?: HandoffPayload; degraded?: boolean; needsHandoff?: boolean }> {
+): Promise<{
+  content: string;
+  handoff?: HandoffPayload;
+  degraded?: boolean;
+  needsHandoff?: boolean;
+  offerAppointment?: boolean;
+}> {
   const cb: StreamCallbacks = typeof callbacks === 'function'
     ? { onToken: callbacks }
     : callbacks;
@@ -159,6 +166,7 @@ export async function proxyStream(
   let handoff: HandoffPayload | undefined;
   let degraded = false;
   let needsHandoff = false;
+  let offerAppointment = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -181,10 +189,17 @@ export async function proxyStream(
         } else if (currentEvent === 'handoff_waiting' && parsed.counselor) {
           handoff = parsed as HandoffPayload;
           cb.onHandoffWaiting?.(handoff);
+        } else if (currentEvent === 'offer_appointment') {
+          offerAppointment = true;
+          cb.onOfferAppointment?.();
         } else if (currentEvent === 'guardrail') {
           cb.onGuardrail?.(parsed);
         } else if (currentEvent === 'done') {
           if (parsed.degraded) degraded = true;
+          if (parsed.offer_appointment) {
+            offerAppointment = true;
+            cb.onOfferAppointment?.();
+          }
           if (parsed.needs_handoff || (parsed.counselor && !parsed.handoff_mode)) {
             needsHandoff = true;
           }
@@ -213,5 +228,5 @@ export async function proxyStream(
     return { content: SOFT_CHAT_FALLBACK, degraded: true, handoff };
   }
 
-  return { content: full, handoff, degraded, needsHandoff };
+  return { content: full, handoff, degraded, needsHandoff, offerAppointment };
 }

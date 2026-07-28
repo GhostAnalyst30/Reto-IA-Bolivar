@@ -9,6 +9,7 @@ import {
   ArrowRight,
   Bot,
   Brain,
+  CalendarClock,
   ChevronDown,
   Heart,
   MessageSquare,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { proxyJson, proxyStream, type HandoffPayload } from '@/lib/proxy';
 import { cn } from '@/lib/utils';
+import { AppointmentModal } from '@/components/student/AppointmentModal';
 
 interface Chat {
   id: string;
@@ -60,6 +62,8 @@ export default function TwinChatPage() {
   const [selfHelp, setSelfHelp] = useState<SelfHelp[]>([]);
   const [mood, setMood] = useState<number | null>(null);
   const [showSupport, setShowSupport] = useState(false);
+  const [showAppointment, setShowAppointment] = useState(false);
+  const [offerAppointmentBanner, setOfferAppointmentBanner] = useState(false);
   const [supportReason, setSupportReason] = useState('');
   const [error, setError] = useState('');
   const [privacyNotice, setPrivacyNotice] = useState('');
@@ -282,6 +286,12 @@ export default function TwinChatPage() {
           });
         },
         onHandoffWaiting: (payload) => applyHandoff(payload, chatId),
+        onOfferAppointment: () => {
+          if (activeChatRef.current === chatId) {
+            setOfferAppointmentBanner(true);
+            setShowAppointment(true);
+          }
+        },
         onGuardrail: (payload) => {
           if (activeChatRef.current !== chatId) return;
           if (payload.privacy_notice) setPrivacyNotice(payload.privacy_notice);
@@ -290,6 +300,10 @@ export default function TwinChatPage() {
 
       if (activeChatRef.current !== chatId) return;
 
+      if (result.offerAppointment) {
+        setOfferAppointmentBanner(true);
+        setShowAppointment(true);
+      }
       if (result.handoff) applyHandoff(result.handoff, chatId);
       if (!assistant.trim() && result.content?.trim()) {
         assistant = result.content.trim();
@@ -513,6 +527,20 @@ export default function TwinChatPage() {
               {privacyNotice}
             </div>
           )}
+          {offerAppointmentBanner && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4">
+              <CalendarClock className="h-5 w-5 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-medium text-primary">Puedes agendar una cita con psicología UTB</p>
+                <p className="text-xs text-on-surface-variant">
+                  Propón fecha y hora; psicologo@utb.edu.co confirmará la disponibilidad.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => setShowAppointment(true)}>
+                Agendar cita
+              </Button>
+            </div>
+          )}
           {handoffMode === 'human' && (
             <div className="flex items-center gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
               <UserRound className="h-5 w-5 shrink-0 text-emerald-500" />
@@ -699,7 +727,16 @@ export default function TwinChatPage() {
             )}
           </div>
         </div>
-        <div className="bg-surface-container-highest/30 p-6">
+        <div className="bg-surface-container-highest/30 space-y-2 p-6">
+          <button
+            type="button"
+            onClick={() => setShowAppointment(true)}
+            disabled={streaming}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 py-3 text-primary shadow-sm transition-colors hover:bg-primary/15 disabled:opacity-50"
+          >
+            <CalendarClock className="h-5 w-5" />
+            Agendar cita
+          </button>
           <button
             type="button"
             onClick={() => selectCompanionMode('human')}
@@ -711,6 +748,12 @@ export default function TwinChatPage() {
           </button>
         </div>
       </aside>
+
+      <AppointmentModal
+        open={showAppointment}
+        chatId={activeChat}
+        onClose={() => setShowAppointment(false)}
+      />
 
       {showSupport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

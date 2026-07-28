@@ -303,3 +303,124 @@ export async function sendOutreachEmail(params: {
     link: params.ctaUrl,
   });
 }
+
+export async function sendAppointmentRequestedEmail(params: {
+  to: string;
+  studentName: string;
+  studentEmail: string;
+  proposedAt: string;
+  reason?: string;
+  forStudent?: boolean;
+}) {
+  const appUrl = getAppUrl();
+  const reasonLine = params.reason
+    ? `<p><strong>Motivo:</strong> ${params.reason}</p>`
+    : '';
+  const html = params.forStudent
+    ? `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
+      <p>Hola <strong>${params.studentName}</strong>,</p>
+      <p>Recibimos tu solicitud de cita con psicología UTB.</p>
+      <p><strong>Fecha/hora propuesta:</strong> ${params.proposedAt}</p>
+      ${reasonLine}
+      <p>El equipo de bienestar revisará la disponibilidad y te confirmaremos por correo.</p>
+      <p style="font-size: 12px; color: #888;">UTB Te acompaña · ${appUrl}</p>
+    </div>`
+    : `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
+      <p>Nueva solicitud de cita psicológica.</p>
+      <p><strong>Estudiante:</strong> ${params.studentName} (${params.studentEmail})</p>
+      <p><strong>Fecha/hora propuesta:</strong> ${params.proposedAt}</p>
+      ${reasonLine}
+      <p style="margin: 28px 0;">
+        <a href="${appUrl}/institutional/counselor/appointments"
+           style="background: #F28C28; color: #FFFFFF; padding: 14px 28px; border-radius: 2px; text-decoration: none; font-weight: 600; display: inline-block;">
+          Revisar citas
+        </a>
+      </p>
+    </div>`;
+
+  return deliverEmail({
+    to: params.to,
+    subject: params.forStudent
+      ? 'Solicitud de cita enviada — UTB Te acompaña'
+      : 'Nueva cita pendiente — Psicología UTB',
+    html,
+    devLog: `Cita solicitada → ${params.to}`,
+  });
+}
+
+export async function sendAppointmentConfirmedEmail(params: {
+  to: string;
+  studentName: string;
+  proposedAt: string;
+  counselorNote?: string;
+  role?: string;
+  studentEmail?: string;
+}) {
+  const appUrl = getAppUrl();
+  const note = params.counselorNote
+    ? `<p><strong>Nota:</strong> ${params.counselorNote}</p>`
+    : '';
+  const isCounselor = params.role === 'counselor';
+  const html = `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
+      <p>${isCounselor ? 'Cita confirmada con el estudiante.' : `Hola <strong>${params.studentName}</strong>,`}</p>
+      <p>La cita de psicología quedó <strong>confirmada</strong>.</p>
+      <p><strong>Fecha/hora:</strong> ${params.proposedAt}</p>
+      ${isCounselor && params.studentEmail ? `<p><strong>Estudiante:</strong> ${params.studentName} (${params.studentEmail})</p>` : ''}
+      ${note}
+      <p style="font-size: 12px; color: #888;">UTB Te acompaña · ${appUrl}</p>
+    </div>
+  `;
+  return deliverEmail({
+    to: params.to,
+    subject: 'Cita confirmada — Psicología UTB',
+    html,
+    devLog: `Cita confirmada → ${params.to}`,
+  });
+}
+
+export async function sendAppointmentRejectedEmail(params: {
+  to: string;
+  studentName: string;
+  proposedAt: string;
+  counselorNote?: string;
+  forCounselor?: boolean;
+  studentEmail?: string;
+}) {
+  const appUrl = getAppUrl();
+  const note = params.counselorNote
+    ? `<p><strong>Comentario:</strong> ${params.counselorNote}</p>`
+    : '';
+  const html = params.forCounselor
+    ? `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
+      <p>Registraste el rechazo/reagendamiento de una cita.</p>
+      <p><strong>Estudiante:</strong> ${params.studentName}${params.studentEmail ? ` (${params.studentEmail})` : ''}</p>
+      <p><strong>Fecha propuesta:</strong> ${params.proposedAt}</p>
+      ${note}
+    </div>`
+    : `
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto;">
+      <h1 style="color: #003A70;">UTB Te acompaña</h1>
+      <p>Hola <strong>${params.studentName}</strong>,</p>
+      <p>La fecha propuesta (${params.proposedAt}) no está disponible en este momento.</p>
+      ${note}
+      <p>Puedes proponer otra fecha desde el chat del Digital Twin.</p>
+      <p style="font-size: 12px; color: #888;">UTB Te acompaña · ${appUrl}</p>
+    </div>`;
+
+  return deliverEmail({
+    to: params.to,
+    subject: params.forCounselor
+      ? 'Cita rechazada registrada — Psicología UTB'
+      : 'Actualización de cita — Psicología UTB',
+    html,
+    devLog: `Cita rechazada → ${params.to}`,
+  });
+}

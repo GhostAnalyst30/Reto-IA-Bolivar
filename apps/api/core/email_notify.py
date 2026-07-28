@@ -43,3 +43,63 @@ async def notify_account_rejected(email: str, full_name: str, reason: str | None
         "fullName": full_name,
         "reason": reason,
     })
+
+
+async def notify_appointment_requested(
+    *,
+    counselor_email: str,
+    student_name: str,
+    student_email: str,
+    proposed_at: str,
+    reason: str | None = None,
+    for_student: bool = False,
+) -> None:
+    await _send_internal_email({
+        "type": "appointment_requested",
+        "to": counselor_email,
+        "fullName": student_name,
+        "studentEmail": student_email,
+        "proposedAt": proposed_at,
+        "reason": reason,
+        "forStudent": for_student,
+    })
+
+
+async def notify_appointment_confirmed(
+    *,
+    to_email: str,
+    student_name: str,
+    proposed_at: str,
+    counselor_note: str | None = None,
+    role: str = "student",
+    student_email: str | None = None,
+) -> None:
+    await _send_internal_email({
+        "type": "appointment_confirmed",
+        "to": to_email,
+        "fullName": student_name,
+        "proposedAt": proposed_at,
+        "counselorNote": counselor_note,
+        "role": role,
+        "studentEmail": student_email,
+    })
+
+
+async def notify_appointment_rejected(
+    *,
+    to_email: str,
+    student_name: str,
+    proposed_at: str,
+    counselor_note: str | None = None,
+    for_counselor: bool = False,
+    student_email: str | None = None,
+) -> None:
+    await _send_internal_email({
+        "type": "appointment_rejected",
+        "to": to_email,
+        "fullName": student_name,
+        "proposedAt": proposed_at,
+        "counselorNote": counselor_note,
+        "forCounselor": for_counselor,
+        "studentEmail": student_email,
+    })

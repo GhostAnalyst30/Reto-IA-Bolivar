@@ -135,6 +135,7 @@ export const ADMIN_INSTITUTIONAL_NAV: NavEntry[] = [
   { href: '/institutional/admin/academic-outcomes', label: 'Estados académicos', adminOnly: true },
   { href: '/institutional/care-queue', label: 'CareQueue', counselorOnly: true },
   { href: '/institutional/counselor/inbox', label: 'Inbox bienestar', counselorOnly: true },
+  { href: '/institutional/counselor/appointments', label: 'Citas psicología', counselorOnly: true },
 ];
 
 /** @deprecated Use ADMIN_INSTITUTIONAL_NAV — directivos migrated to admin. */

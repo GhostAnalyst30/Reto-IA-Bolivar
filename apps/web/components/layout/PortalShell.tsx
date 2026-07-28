@@ -9,6 +9,7 @@ import {
   Bell,
   Brain,
   ClipboardList,
+  Compass,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -43,6 +44,7 @@ interface PortalShellProps {
 const STUDENT_SIDEBAR: { label: string; href: string; icon: LucideIcon }[] = [
   { label: 'Digital Twin', href: '/student/twin/summary', icon: Brain },
   { label: 'Caracterización', href: '/student/onboarding/survey', icon: ClipboardList },
+  { label: 'Test vocacional', href: '/student/vocational', icon: Compass },
   { label: 'Oportunidades', href: '/student/opportunities', icon: Sparkles },
   { label: 'Acompañamiento', href: '/student/resources', icon: LifeBuoy },
   { label: 'Chat', href: '/student/twin/chat', icon: MessageSquare },
@@ -340,6 +342,7 @@ export function PortalShell({
 export const STUDENT_NAV: NavItem[] = [
   { href: '/student/twin/summary', label: 'Mi Digital Twin' },
   { href: '/student/onboarding/survey', label: 'Encuesta de caracterización' },
+  { href: '/student/vocational', label: 'Test vocacional' },
   { href: '/student/opportunities', label: 'Oportunidades' },
   { href: '/student/resources', label: 'Recursos y apoyo' },
   { href: '/student/twin/chat', label: 'Chat Digital Twin' },

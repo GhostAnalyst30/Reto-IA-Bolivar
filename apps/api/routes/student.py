@@ -272,7 +272,28 @@ async def send_message(chat_id: str, body: MessageCreate, user: dict = Depends(r
                 for chunk in _chunk_text(msg):
                     yield {"event": "token", "data": json.dumps({"token": chunk})}
             yield {"event": "handoff_waiting", "data": json.dumps(payload)}
-            yield {"event": "done", "data": json.dumps({**payload, "content": msg, "guardrail": "crisis"})}
+            done_payload = {
+                **payload,
+                "content": msg,
+                "guardrail": "crisis",
+                "offer_appointment": True,
+            }
+            yield {"event": "offer_appointment", "data": json.dumps({"offer_appointment": True})}
+            yield {"event": "done", "data": json.dumps(done_payload)}
+            return
+
+        if input_check.action == "offer_appointment":
+            msg = input_check.user_message or ""
+            if msg:
+                _save_assistant(msg)
+                for chunk in _chunk_text(msg):
+                    yield {"event": "token", "data": json.dumps({"token": chunk})}
+            yield {"event": "offer_appointment", "data": json.dumps({"offer_appointment": True})}
+            yield {"event": "done", "data": json.dumps({
+                "content": msg,
+                "guardrail": "offer_appointment",
+                "offer_appointment": True,
+            })}
             return
 
         if input_check.action in ("block", "redirect"):

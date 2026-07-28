@@ -14,6 +14,8 @@ const STUDENT_PREFIXES = [
   '/progress',
   '/programs',
   '/psychometric',
+  '/vocational',
+  '/appointments',
   '/opportunities',
   '/support-requests',
   '/mood-checkins',
@@ -66,6 +68,11 @@ export function isPathAllowed(path: string, role: string): boolean {
 
   if (path.startsWith('/opportunities/admin')) {
     return isStaff(role);
+  }
+
+  // Citas: estudiante crea/consulta; psicólogo confirma en /appointments/inbox
+  if (path.startsWith('/appointments')) {
+    return role === STUDENT_ROLE || role === PSYCHOLOGIST_ROLE || role === PLATFORM_ADMIN_ROLE || role === ADMIN_ROLE;
   }
 
   if (INSTITUTIONAL_PREFIXES.some((p) => path.startsWith(p))) {

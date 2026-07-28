@@ -3,10 +3,10 @@ from pydantic_settings import BaseSettings
 
 
 DEFAULT_OPENROUTER_FREE_MODELS = (
+    "nvidia/nemotron-3-ultra-550b-a55b:free,"
+    "cohere/north-mini-code:free,"
     "google/gemma-4-31b-it:free,"
     "openai/gpt-oss-20b:free,"
-    "nvidia/nemotron-nano-9b-v2:free,"
-    "google/gemma-4-26b-a4b-it:free,"
     "openrouter/free"
 )
 
@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model_tutor: str = "google/gemma-4-31b-it:free"
-    llm_model_director: str = "google/gemma-4-31b-it:free"
-    llm_model_path: str = "openai/gpt-oss-20b:free"
+    llm_model_tutor: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    llm_model_director: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    llm_model_path: str = "cohere/north-mini-code:free"
     # CSV of free OpenRouter model IDs tried in order (max llm_max_openrouter_attempts).
     llm_openrouter_free_models: str = DEFAULT_OPENROUTER_FREE_MODELS
     llm_max_openrouter_attempts: int = 5
