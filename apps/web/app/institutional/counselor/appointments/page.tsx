@@ -67,7 +67,7 @@ export default function CounselorAppointmentsPage() {
 
   const visible = filter === 'pending' ? rows.filter((r) => r.status === 'pending') : rows;
 
-  if (loading) return <LoadingState message="Cargando citas…" />;
+  if (loading) return <LoadingState />;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">

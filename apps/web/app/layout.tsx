@@ -33,6 +33,15 @@ export const metadata: Metadata = {
     icon: '/icons/images.ico',
     apple: '/icons/images.png',
   },
+  openGraph: {
+    title: 'UTB Te Acompaña',
+    description: 'UTB Te acompaña es una plataforma de acompañamiento estudiantil de la Universidad Tecnológica de Bolívar, orientada a prevenir la deserción. Combina un Digital Twin psicológico (chat empático + citas con psicología), encuesta de caracterización y test vocacional, con herramientas institucionales de riesgo, CareQueue y apoyo humano.',
+    url: 'https://reto-ia-bolivar.vercel.app/',
+    siteName: 'UTB Te Acompaña',
+    images: [{ url: '/og.png', width: 1200, height: 630 }],
+    locale: 'es_CO',
+    type: 'website',
+  }
 };
 
 export const viewport: Viewport = {

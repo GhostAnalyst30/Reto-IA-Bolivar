@@ -280,7 +280,7 @@ export default function VocationalPage() {
         </Card>
       )}
 
-      <ActionOverlay open={loading} title="Calculando afinidad…" />
+      <ActionOverlay show={loading} message="Calculando afinidad…" />
     </div>
   );
 }
