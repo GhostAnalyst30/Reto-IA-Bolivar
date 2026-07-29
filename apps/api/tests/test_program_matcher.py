@@ -2,8 +2,8 @@
 import asyncio
 import unittest
 
+from agents.vocational_questions import _normalize_weights
 from services.program_matcher import (
-    _normalize_weights,
     combine_features,
     features_from_characterization,
     features_from_vocational,
@@ -154,10 +154,9 @@ class EmbeddingBlendTests(unittest.TestCase):
         async def fake_embed_text(text):
             return [1.0, 0.0]
 
-        async def fake_cosine_sim(a, b):
+        def fake_cosine_sim(a, b):
             return 1.0 if a == b else 0.0
 
-        import services.program_matcher as pm
         import core.embeddings as emb
 
         orig_embed = emb.embed_text

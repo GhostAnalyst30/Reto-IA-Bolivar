@@ -94,14 +94,6 @@ CHAT_KEYWORDS = {
     "creative": ["diseño", "diseno", "creativ", "arte", "arquitect", "comunic"],
     "society": ["derecho", "psicolog", "política", "politica", "justicia", "sociedad"],
 }
-    "tech": ["program", "código", "codigo", "software", "app", "datos", "python", "sistema", "ia"],
-    "industrial": ["proceso", "planta", "logística", "logistica", "producción", "calidad"],
-    "engineering": ["máquina", "maquina", "circuito", "obra", "estructur", "mecán", "electr"],
-    "science": ["ambiental", "química", "quimica", "bioméd", "laboratorio", "ciencia"],
-    "business": ["negocio", "empresa", "emprend", "finanza", "marketing", "lider", "contab"],
-    "creative": ["diseño", "diseno", "creativ", "arte", "arquitect", "comunic"],
-    "society": ["derecho", "psicolog", "política", "politica", "justicia", "sociedad"],
-}
 
 
 def _resolve_domain(name: str) -> str | None:
