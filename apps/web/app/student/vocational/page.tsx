@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card } from '@/components/ui';
 import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { NeuralProgramGraph } from '@/components/vocational/NeuralProgramGraph';
@@ -8,12 +8,19 @@ import { proxyJson } from '@/lib/proxy';
 import { Compass, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
+interface BinaryOption {
+  value: string;
+  label: string;
+  next: string | null;
+}
+
 interface Question {
   id: string;
   text: string;
   type: string;
-  options?: string[];
+  options?: Array<string | BinaryOption>;
   tags?: string[];
+  hint?: string;
 }
 
 interface Recommendation {
@@ -25,15 +32,45 @@ interface Recommendation {
   programs_active_count?: number;
 }
 
+function normalizeOptions(options?: Array<string | BinaryOption>): BinaryOption[] {
+  if (!options?.length) return [];
+  return options.map((opt, i) => {
+    if (typeof opt === 'string') {
+      return { value: opt, label: opt, next: null };
+    }
+    return {
+      value: opt.value,
+      label: opt.label,
+      next: opt.next ?? null,
+    };
+  });
+}
+
+/** Typical depth of the UTB binary tree (used for progress UX). */
+const EXPECTED_DEPTH = 5;
+
 export default function VocationalPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [step, setStep] = useState(0);
-  const [responses, setResponses] = useState<Record<string, unknown>>({});
+  const [rootId, setRootId] = useState('v1');
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
+  const [responses, setResponses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [error, setError] = useState('');
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [completed, setCompleted] = useState(false);
+
+  const byId = useMemo(() => {
+    const map = new Map<string, Question>();
+    for (const q of questions) map.set(q.id, q);
+    return map;
+  }, [questions]);
+
+  const q = currentId ? byId.get(currentId) : undefined;
+  const options = normalizeOptions(q?.options);
+  const answeredCount = Object.keys(responses).length;
+  const progress = Math.min(100, ((answeredCount + (q ? 0.35 : 0)) / EXPECTED_DEPTH) * 100);
 
   const loadRecommendation = useCallback(async () => {
     try {
@@ -48,13 +85,20 @@ export default function VocationalPage() {
     setLoadingQuestions(true);
     setError('');
     try {
-      const d = await proxyJson<{ questions: Question[] }>('/vocational/questions');
-      setQuestions(d.questions || []);
-      setStep(0);
+      const d = await proxyJson<{ questions: Question[]; root_id?: string }>(
+        '/vocational/questions'
+      );
+      const list = d.questions || [];
+      const root = d.root_id || list[0]?.id || 'v1';
+      setQuestions(list);
+      setRootId(root);
+      setCurrentId(root);
+      setHistory([]);
       setResponses({});
     } catch {
       setError('No se pudieron cargar las preguntas del test vocacional.');
       setQuestions([]);
+      setCurrentId(null);
     } finally {
       setLoadingQuestions(false);
     }
@@ -72,22 +116,17 @@ export default function VocationalPage() {
       .catch(() => undefined);
   }, [loadQuestions, loadRecommendation]);
 
-  const q = questions[step];
-  const progress = questions.length ? ((step + 1) / questions.length) * 100 : 0;
-
-  function setAnswer(value: unknown) {
-    if (!q) return;
-    setResponses((r) => ({ ...r, [q.id]: value }));
-  }
-
-  async function submitAll(finalResponses: Record<string, unknown>) {
+  async function submitPath(finalResponses: Record<string, string>) {
     setLoading(true);
     setError('');
-    const payload = questions.map((question) => ({
-      question_id: question.id,
-      value: finalResponses[question.id],
-      tags: question.tags || [],
-    }));
+    const payload = Object.entries(finalResponses).map(([question_id, value]) => {
+      const question = byId.get(question_id);
+      return {
+        question_id,
+        value,
+        tags: question?.tags || [],
+      };
+    });
     try {
       const res = await proxyJson<{ recommendation?: Recommendation }>('/vocational/submit', {
         method: 'POST',
@@ -103,13 +142,33 @@ export default function VocationalPage() {
     }
   }
 
-  function next() {
-    if (!q || responses[q.id] === undefined) return;
-    if (step < questions.length - 1) {
-      setStep((s) => s + 1);
+  function choose(option: BinaryOption) {
+    if (!q) return;
+    const nextResponses = { ...responses, [q.id]: option.value };
+    setResponses(nextResponses);
+
+    if (option.next && byId.has(option.next)) {
+      setHistory((h) => [...h, q.id]);
+      setCurrentId(option.next);
       return;
     }
-    submitAll(responses);
+    submitPath(nextResponses);
+  }
+
+  function goBack() {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    const dropping = currentId;
+    setHistory((h) => h.slice(0, -1));
+    setCurrentId(prev);
+    if (dropping) {
+      setResponses((r) => {
+        const copy = { ...r };
+        delete copy[dropping];
+        delete copy[prev];
+        return copy;
+      });
+    }
   }
 
   const showResult = completed && recommendation;
@@ -132,9 +191,8 @@ export default function VocationalPage() {
           Test vocacional
         </h1>
         <p className="mt-2 text-sm text-on-surface-variant">
-          Preguntas puntuales (sin IA). La recomendación combina tu encuesta de caracterización,
-          este test y tus conversaciones con el Digital Twin. Si los admins cambian los programas
-          activos, la red se actualiza.
+          Árbol de decisiones binarias alineado a los pregrados UTB. Cada paso te acerca a una
+          familia de programas; la recomendación también usa tu caracterización y el Digital Twin.
         </p>
       </div>
 
@@ -221,58 +279,38 @@ export default function VocationalPage() {
                 />
               </div>
               <p className="text-xs text-on-surface-variant">
-                Pregunta {step + 1} de {questions.length}
+                Paso {answeredCount + 1}
+                {history.length === 0 && currentId === rootId ? ' · inicio del árbol' : ''}
               </p>
               <p className="text-lg font-medium text-on-surface">{q.text}</p>
+              {q.hint && <p className="text-sm text-on-surface-variant">{q.hint}</p>}
 
-              {q.type === 'likert' ? (
-                <div className="flex flex-wrap gap-2">
-                  {[1, 2, 3, 4, 5].map((n) => (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {options.map((opt) => {
+                  const selected = responses[q.id] === opt.value;
+                  return (
                     <button
-                      key={n}
+                      key={opt.value}
                       type="button"
-                      onClick={() => setAnswer(n)}
-                      className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                        responses[q.id] === n
-                          ? 'bg-primary text-on-primary'
-                          : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {(q.options || []).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setAnswer(opt)}
-                      className={`block w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
-                        responses[q.id] === opt
+                      disabled={loading}
+                      onClick={() => choose(opt)}
+                      className={`rounded-xl border px-4 py-4 text-left text-sm transition ${
+                        selected
                           ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-outline-variant/30 hover:bg-surface-container-low'
+                          : 'border-outline-variant/30 hover:border-primary/40 hover:bg-surface-container-low'
                       }`}
                     >
-                      {opt}
+                      {opt.label}
                     </button>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
 
               <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  disabled={step === 0}
-                  onClick={() => setStep((s) => Math.max(0, s - 1))}
-                >
+                <Button variant="secondary" disabled={!history.length || loading} onClick={goBack}>
                   Atrás
-                </Button>
-                <Button onClick={next} disabled={responses[q.id] === undefined || loading}>
-                  {step === questions.length - 1 ? 'Ver resultados' : 'Siguiente'}
                 </Button>
               </div>
             </>

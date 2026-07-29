@@ -4,29 +4,35 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from agents.vocational_questions import get_vocational_questions
+from agents.vocational_questions import get_root_question_id, get_vocational_questions
 from core.supabase_client import get_supabase
 from routes.deps import require_student
 from services.program_matcher import build_recommendation
 
 router = APIRouter(prefix="/vocational", tags=["vocational"])
 
-MIN_RESPONSES = 8
+# Un camino del árbol suele tener 5 preguntas binarias
+MIN_RESPONSES = 4
 
 
 class SubmitVocational(BaseModel):
     responses: list[dict]
 
 
+def _public_question(q: dict) -> dict:
+    """Hide scoring maps; keep navigation fields for the binary tree UI."""
+    return {k: v for k, v in q.items() if k != "domain_map"}
+
+
 @router.get("/questions")
 async def get_questions(user: dict = Depends(require_student)):
     questions = get_vocational_questions()
-    # Hide domain_map from client (scoring-only)
-    public = []
-    for q in questions:
-        item = {k: v for k, v in q.items() if k != "domain_map"}
-        public.append(item)
-    return {"questions": public, "source": "fixed"}
+    return {
+        "questions": [_public_question(q) for q in questions],
+        "root_id": get_root_question_id(),
+        "source": "fixed_binary_tree",
+        "mode": "decision_tree",
+    }
 
 
 @router.get("/assessment")
