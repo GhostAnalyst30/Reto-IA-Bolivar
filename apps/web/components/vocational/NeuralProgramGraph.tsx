@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  Cpu,
+  GraduationCap,
+  Maximize,
+  Pause,
+  Play,
+  Sparkles,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface GraphFeatureNode {
@@ -30,50 +37,80 @@ interface NeuralProgramGraphProps {
 
 type LayerKind = 'feature' | 'hidden' | 'program';
 
-interface GraphNode {
+interface GNode {
   id: string;
   label: string;
   kind: LayerKind;
   activation: number;
-  position: THREE.Vector3;
+  x: number;
+  y: number;
   description?: string;
   affinity?: number;
 }
 
-interface GraphEdge {
-  key: string;
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  weight: number;
-  curve: THREE.QuadraticBezierCurve3;
+interface GEdge {
+  id: string;
   fromId: string;
   toId: string;
+  weight: number;
+  d: string;
+  fromKind: LayerKind;
+  toKind: LayerKind;
 }
 
-/** Traveling pulse: stage 1 = feature→hidden, stage 2 = hidden→program. */
-interface CascadeImpulse {
-  edgeIndex: number;
+interface Pulse {
+  uid: number;
+  edgeId: string;
   stage: 1 | 2;
-  t: number;
-  speed: number;
-  mesh: THREE.Mesh;
-  born: number;
+  duration: number;
+  color: string;
+  radius: number;
 }
 
-const COLORS = {
-  bg: 0x070d1a,
-  feature: 0xf5a623,
-  hidden: 0x3b82f6,
-  program: 0x002576,
-  programHot: 0x0ea5e9,
-  edge: 0x64748b,
-  edgeActive: 0x93c5fd,
-  impulse: 0xffffff,
-  glow: 0x60a5fa,
+const VW = 720;
+const VH = 480;
+const COL = { feature: 110, hidden: 360, program: 612 };
+const LAYER_DELAY: Record<LayerKind, number> = { feature: 0, hidden: 0.18, program: 0.36 };
+
+const BRAND = {
+  feature: '#f28c28',
+  featureSoft: '#fbbf6a',
+  hidden: '#4a90c2',
+  hiddenSoft: '#7fb0d8',
+  program: '#002576',
+  programHot: '#4a90c2',
+  edge: '#94a3b8',
+  edgeActive: '#38bdf8',
+  impulse: '#ffffff',
 };
 
-function clamp01(n: number) {
-  return Math.min(1, Math.max(0, n));
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+const truncate = (s: string, max = 22) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+function hexToRgb(hex: string) {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  return {
+    r: parseInt(v.slice(0, 2), 16),
+    g: parseInt(v.slice(2, 4), 16),
+    b: parseInt(v.slice(4, 6), 16),
+  };
+}
+
+function lerpColor(a: string, b: string, t: number) {
+  const pa = hexToRgb(a);
+  const pb = hexToRgb(b);
+  return `rgb(${Math.round(pa.r + (pb.r - pa.r) * t)}, ${Math.round(pa.g + (pb.g - pa.g) * t)}, ${Math.round(pa.b + (pb.b - pa.b) * t)})`;
+}
+
+function nodeFill(kind: LayerKind, activation: number) {
+  if (kind === 'feature') return BRAND.feature;
+  if (kind === 'hidden') return lerpColor(BRAND.hidden, BRAND.hiddenSoft, activation);
+  return lerpColor(BRAND.program, BRAND.programHot, activation);
+}
+
+function nodeRadius(n: GNode) {
+  return n.kind === 'hidden' ? 14 + n.activation * 5 : 11 + n.activation * 8;
 }
 
 function buildLayout(features: GraphFeatureNode[], programs: GraphProgram[]) {
@@ -81,634 +118,491 @@ function buildLayout(features: GraphFeatureNode[], programs: GraphProgram[]) {
   const progs = programs.slice(0, 8);
   const hiddenCount = Math.min(5, Math.max(3, Math.ceil((feats.length + progs.length) / 3)));
 
-  const featureNodes: GraphNode[] = feats.map((f, i) => {
+  const featureNodes: GNode[] = feats.map((f, i) => {
     const t = feats.length <= 1 ? 0.5 : i / (feats.length - 1);
     return {
       id: f.id,
       label: f.label,
-      kind: 'feature' as const,
+      kind: 'feature',
       activation: clamp01(f.weight || 0.2),
-      position: new THREE.Vector3(-3.2, (t - 0.5) * 3.6, Math.sin(i * 1.7) * 0.25),
+      x: COL.feature,
+      y: 60 + t * (VH - 120),
     };
   });
 
-  const hiddenNodes: GraphNode[] = Array.from({ length: hiddenCount }, (_, i) => {
+  const hiddenNodes: GNode[] = Array.from({ length: hiddenCount }, (_, i) => {
     const t = hiddenCount <= 1 ? 0.5 : i / (hiddenCount - 1);
     return {
       id: `h-${i}`,
       label: i === Math.floor(hiddenCount / 2) ? 'Twin' : `H${i + 1}`,
-      kind: 'hidden' as const,
+      kind: 'hidden',
       activation: 0.45 + (i % 3) * 0.12,
-      position: new THREE.Vector3(-0.15 + (i % 2) * 0.2, (t - 0.5) * 2.8, Math.cos(i) * 0.2),
+      x: COL.hidden,
+      y: 90 + t * (VH - 180),
     };
   });
 
-  const programNodes: GraphNode[] = progs.map((p, i) => {
+  const programNodes: GNode[] = progs.map((p, i) => {
     const t = progs.length <= 1 ? 0.5 : i / (progs.length - 1);
     const affinity = clamp01(p.affinity ?? p.score ?? 0.3);
     return {
       id: p.id || `p-${i}`,
       label: p.name,
-      kind: 'program' as const,
+      kind: 'program',
       activation: affinity,
       affinity,
       description: p.description,
-      position: new THREE.Vector3(3.2, (t - 0.5) * 3.6, Math.sin(i * 1.3) * 0.25),
+      x: COL.program,
+      y: 60 + t * (VH - 120),
     };
   });
 
-  const edges: GraphEdge[] = [];
+  const allNodes = [...featureNodes, ...hiddenNodes, ...programNodes];
+  const byId = new Map(allNodes.map((n) => [n.id, n]));
+  const edges: GEdge[] = [];
+  let ei = 0;
+
+  const pushEdge = (from: GNode, to: GNode, weight: number, bend: number) => {
+    if (weight < 0.16) return;
+    const mx = (from.x + to.x) / 2;
+    const my = (from.y + to.y) / 2 + bend;
+    edges.push({
+      id: `e${ei++}`,
+      fromId: from.id,
+      toId: to.id,
+      weight,
+      fromKind: from.kind,
+      toKind: to.kind,
+      d: `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`,
+    });
+  };
 
   for (const f of featureNodes) {
     for (const h of hiddenNodes) {
-      const weight = clamp01(f.activation * (0.55 + h.activation * 0.45));
-      if (weight < 0.18) continue;
-      const mid = f.position.clone().lerp(h.position, 0.5);
-      mid.z += 0.35 + weight * 0.4;
-      mid.y += (h.position.y - f.position.y) * 0.08;
-      edges.push({
-        key: `${f.id}-${h.id}`,
-        from: f.position.clone(),
-        to: h.position.clone(),
-        weight,
-        fromId: f.id,
-        toId: h.id,
-        curve: new THREE.QuadraticBezierCurve3(f.position.clone(), mid, h.position.clone()),
-      });
+      pushEdge(f, h, clamp01(f.activation * (0.55 + h.activation * 0.45)), -8 - f.activation * 14);
     }
   }
-
   for (const h of hiddenNodes) {
     for (const p of programNodes) {
-      const weight = clamp01(h.activation * (0.35 + (p.affinity || 0.25)));
-      if (weight < 0.16) continue;
-      const mid = h.position.clone().lerp(p.position, 0.5);
-      mid.z -= 0.3 + weight * 0.35;
-      edges.push({
-        key: `${h.id}-${p.id}`,
-        from: h.position.clone(),
-        to: p.position.clone(),
-        weight,
-        fromId: h.id,
-        toId: p.id,
-        curve: new THREE.QuadraticBezierCurve3(h.position.clone(), mid, p.position.clone()),
-      });
+      pushEdge(h, p, clamp01(h.activation * (0.35 + (p.affinity || 0.25))), 8 + (p.affinity || 0.25) * 14);
     }
   }
 
-  return { featureNodes, hiddenNodes, programNodes, edges, allNodes: [...featureNodes, ...hiddenNodes, ...programNodes] };
-}
-
-function nodeColor(kind: LayerKind, activation: number) {
-  if (kind === 'feature') return new THREE.Color(COLORS.feature);
-  if (kind === 'hidden') return new THREE.Color(COLORS.hidden).lerp(new THREE.Color(COLORS.glow), activation * 0.35);
-  return new THREE.Color(COLORS.program).lerp(new THREE.Color(COLORS.programHot), activation);
-}
-
-function easeInOutCubic(x: number) {
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  return { featureNodes, hiddenNodes, programNodes, allNodes, edges, byId };
 }
 
 export function NeuralProgramGraph({ features, programs, className }: NeuralProgramGraphProps) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{
-    label: string;
-    affinity?: number;
-    description?: string;
-    kind: LayerKind;
-    activation: number;
-    locked: boolean;
-  } | null>(null);
-  const [ready, setReady] = useState(false);
-
   const layout = useMemo(() => buildLayout(features, programs), [features, programs]);
+  const hasData = layout.allNodes.length > 0;
+
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number } | null>(null);
+  const [pulsesOn, setPulsesOn] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [pulses, setPulses] = useState<Pulse[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const uidRef = useRef(0);
+
+  const reduceMotion = useMemo(
+    () => (typeof window !== 'undefined' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false),
+    [],
+  );
+
+  const focusId = selectedId || hoverId;
+  const activeEdges = useMemo(() => {
+    if (!focusId) return null;
+    const set = new Set<string>();
+    layout.edges.forEach((e) => {
+      if (e.fromId === focusId || e.toId === focusId) set.add(e.id);
+    });
+    return set;
+  }, [focusId, layout.edges]);
+
+  const outgoingFromHidden = useMemo(() => {
+    const map = new Map<string, GEdge[]>();
+    layout.edges.forEach((e) => {
+      if (e.fromKind === 'hidden') {
+        const arr = map.get(e.fromId) || [];
+        arr.push(e);
+        map.set(e.fromId, arr);
+      }
+    });
+    return map;
+  }, [layout.edges]);
+
+  const featureToHidden = useMemo(
+    () => layout.edges.filter((e) => e.fromKind === 'feature').sort((a, b) => b.weight - a.weight),
+    [layout.edges],
+  );
+
+  const edgeById = useMemo(() => new Map(layout.edges.map((e) => [e.id, e])), [layout.edges]);
+
+  const spawnPulse = useCallback(
+    (edge: GEdge, stage: 1 | 2) => {
+      const duration = 1.1 - edge.weight * 0.35;
+      const color = stage === 1 ? BRAND.featureSoft : BRAND.edgeActive;
+      const radius = 2.4 + edge.weight * 2.2;
+      const uid = ++uidRef.current;
+      setPulses((p) => [...p, { uid, edgeId: edge.id, stage, duration, color, radius }]);
+      window.setTimeout(() => {
+        setPulses((p) => p.filter((x) => x.uid !== uid));
+      }, duration * 1000 + 80);
+      if (stage === 1) {
+        const next = (outgoingFromHidden.get(edge.toId) || [])
+          .slice()
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 2);
+        next.forEach((ne, idx) => {
+          window.setTimeout(() => spawnPulse(ne, 2), duration * 1000 + idx * 90);
+        });
+      }
+    },
+    [outgoingFromHidden],
+  );
 
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const width = mount.clientWidth || 640;
-    const height = Math.max(360, Math.min(480, Math.round(width * 0.62)));
-
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(COLORS.bg, 0.045);
-    scene.background = new THREE.Color(COLORS.bg);
-
-    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
-    camera.position.set(0, 0.15, 8.2);
-    camera.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(width, height);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    mount.appendChild(renderer.domElement);
-    renderer.domElement.style.width = '100%';
-    renderer.domElement.style.height = 'auto';
-    renderer.domElement.style.display = 'block';
-    renderer.domElement.setAttribute('aria-label', 'Red neuronal de afinidad vocacional');
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.enablePan = false;
-    controls.minDistance = 5;
-    controls.maxDistance = 13;
-    controls.minPolarAngle = Math.PI * 0.3;
-    controls.maxPolarAngle = Math.PI * 0.7;
-    controls.autoRotate = !reduceMotion;
-    controls.autoRotateSpeed = 0.6;
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    const resumeAutoRotateAfterIdle = () => {
-      controls.autoRotate = false;
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        if (!reduceMotion) controls.autoRotate = true;
-      }, 3500);
+    if (!pulsesOn || reduceMotion || !featureToHidden.length) return;
+    const tick = () => {
+      const pool = featureToHidden.slice(0, Math.min(6, featureToHidden.length));
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pick) spawnPulse(pick, 1);
     };
-    controls.addEventListener('start', resumeAutoRotateAfterIdle);
+    const id = window.setInterval(tick, 950);
+    return () => window.clearInterval(id);
+  }, [pulsesOn, reduceMotion, featureToHidden, spawnPulse]);
 
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.55, 0.5, 0.18);
-    composer.addPass(bloomPass);
+  useEffect(() => setPulses([]), [layout]);
 
-    const ambient = new THREE.AmbientLight(0x9fb4d9, 0.55);
-    const key = new THREE.PointLight(0x7dd3fc, 1.4, 30);
-    key.position.set(2.5, 3, 5);
-    const fill = new THREE.PointLight(0xf5a623, 0.55, 24);
-    fill.position.set(-4, -1, 3);
-    const rim = new THREE.PointLight(0x60a5fa, 0.8, 20);
-    rim.position.set(0, 2, -4);
-    scene.add(ambient, key, fill, rim);
+  const onNodePointerMove = (e: React.PointerEvent, id: string) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setHoverId(id);
+    setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
 
-    const grid = new THREE.GridHelper(12, 24, 0x1e3a5f, 0x13233a);
-    grid.position.y = -2.4;
-    const gridMats = Array.isArray(grid.material) ? grid.material : [grid.material];
-    gridMats.forEach((m) => {
-      m.transparent = true;
-      m.opacity = 0.35;
-    });
-    scene.add(grid);
+  const onNodePointerLeave = () => {
+    setHoverId(null);
+    if (!selectedId) setTooltip(null);
+  };
 
-    const graphRoot = new THREE.Group();
-    const nodeGroup = new THREE.Group();
-    const edgeGroup = new THREE.Group();
-    const impulseGroup = new THREE.Group();
-    const labelGroup = new THREE.Group();
-    graphRoot.add(nodeGroup, edgeGroup, impulseGroup, labelGroup);
-    scene.add(graphRoot);
+  const onNodeClick = (id: string) => {
+    setSelectedId((cur) => (cur === id ? null : id));
+  };
 
-    const entranceStart = performance.now();
-
-    const nodeMeshes = new Map<string, THREE.Mesh>();
-    const nodeRings = new Map<string, THREE.Mesh>();
-    const nodeMeta = new Map<string, GraphNode>();
-    const pickables: THREE.Object3D[] = [];
-
-    for (const n of layout.allNodes) {
-      const radius = n.kind === 'hidden' ? 0.22 + n.activation * 0.08 : 0.16 + n.activation * 0.14;
-      const geo = new THREE.SphereGeometry(radius, 32, 32);
-      const color = nodeColor(n.kind, n.activation);
-      const mat = new THREE.MeshStandardMaterial({
-        color,
-        emissive: color.clone().multiplyScalar(0.45),
-        emissiveIntensity: 0.35 + n.activation * 0.9,
-        roughness: 0.35,
-        metalness: 0.25,
-        transparent: true,
-        opacity: 0,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.copy(n.position);
-      mesh.scale.setScalar(0.01);
-      mesh.userData = { id: n.id, kind: n.kind };
-      nodeGroup.add(mesh);
-      nodeMeshes.set(n.id, mesh);
-      nodeMeta.set(n.id, n);
-      if (n.kind === 'program' || n.kind === 'feature') pickables.push(mesh);
-
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(radius * 1.35, radius * 1.55, 48),
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: 0,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        })
-      );
-      ring.position.copy(n.position);
-      ring.lookAt(camera.position);
-      ring.userData = { parentId: n.id, isRing: true };
-      nodeGroup.add(ring);
-      nodeRings.set(n.id, ring);
+  const onNodeKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onNodeClick(id);
+    } else if (e.key === 'Escape') {
+      setSelectedId(null);
+      setTooltip(null);
     }
+  };
 
-    const edgeTubes: { mesh: THREE.Mesh; weight: number; edge: GraphEdge; baseOpacity: number }[] = [];
-    for (const edge of layout.edges) {
-      const tubularSegments = 48;
-      const radius = 0.012 + edge.weight * 0.055;
-      const geo = new THREE.TubeGeometry(edge.curve, tubularSegments, radius, 8, false);
-      const baseOpacity = 0.28 + edge.weight * 0.55;
-      const mat = new THREE.MeshStandardMaterial({
-        color: COLORS.edge,
-        emissive: new THREE.Color(COLORS.glow),
-        emissiveIntensity: 0.15 + edge.weight * 0.55,
-        transparent: true,
-        opacity: 0,
-        roughness: 0.4,
-        metalness: 0.1,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      edgeGroup.add(mesh);
-      edgeTubes.push({ mesh, weight: edge.weight, edge, baseOpacity });
-    }
-
-    const impulses: CascadeImpulse[] = [];
-    const impulseGeo = new THREE.SphereGeometry(0.05, 12, 12);
-    const featureToHidden = layout.edges
-      .map((e, i) => ({ e, i }))
-      .filter(({ e }) => nodeMeta.get(e.fromId)?.kind === 'feature');
-    const hiddenOutgoing = new Map<string, { e: GraphEdge; i: number }[]>();
-    layout.edges.forEach((e, i) => {
-      if (nodeMeta.get(e.fromId)?.kind === 'hidden') {
-        const list = hiddenOutgoing.get(e.fromId) || [];
-        list.push({ e, i });
-        hiddenOutgoing.set(e.fromId, list);
-      }
-    });
-
-    function spawnImpulse(edgeIndex: number, stage: 1 | 2, now: number) {
-      const edge = layout.edges[edgeIndex];
-      if (!edge) return;
-      const mat = new THREE.MeshStandardMaterial({
-        color: COLORS.impulse,
-        emissive: new THREE.Color(edge.weight > 0.5 ? COLORS.feature : COLORS.glow),
-        emissiveIntensity: 2,
-        roughness: 0.2,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 0.95,
-      });
-      const mesh = new THREE.Mesh(impulseGeo, mat);
-      mesh.position.copy(edge.curve.getPoint(0));
-      mesh.scale.setScalar(0.6 + edge.weight * 0.7);
-      impulseGroup.add(mesh);
-      impulses.push({ edgeIndex, stage, t: 0, speed: 0.55 + edge.weight * 0.35, mesh, born: now });
-    }
-
-    function fireWave(now: number) {
-      if (!featureToHidden.length) return;
-      const weighted = featureToHidden.slice().sort((a, b) => b.e.weight - a.e.weight);
-      const pick = weighted[Math.floor(Math.random() * Math.min(6, weighted.length))];
-      if (pick) spawnImpulse(pick.i, 1, now);
-    }
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let hoveredId: string | null = null;
-    let selectedId: string | null = null;
-    const cameraTargetGoal = new THREE.Vector3(0, 0, 0);
-
-    function connectedEdgeIndices(nodeId: string) {
-      const set = new Set<number>();
-      layout.edges.forEach((e, i) => {
-        if (e.fromId === nodeId || e.toId === nodeId) set.add(i);
-      });
-      return set;
-    }
-
-    function applySelectionHighlight() {
-      const focusId = selectedId || hoveredId;
-      const active = focusId ? connectedEdgeIndices(focusId) : null;
-      edgeTubes.forEach((tube, i) => {
-        const mat = tube.mesh.material as THREE.MeshStandardMaterial;
-        if (!active) {
-          mat.opacity = tube.baseOpacity;
-        } else if (active.has(i)) {
-          mat.color.setHex(COLORS.edgeActive);
-          mat.opacity = Math.min(1, tube.baseOpacity + 0.4);
-        } else {
-          mat.color.setHex(COLORS.edge);
-          mat.opacity = tube.baseOpacity * 0.12;
-        }
-      });
-    }
-
-    function updateHoverFromId(id: string | null) {
-      hoveredId = id;
-      const activeId = selectedId || id;
-      if (activeId) {
-        const meta = nodeMeta.get(activeId);
-        if (meta) {
-          setHover({
-            label: meta.label,
-            affinity: meta.affinity,
-            description: meta.description,
-            kind: meta.kind,
-            activation: meta.activation,
-            locked: !!selectedId,
-          });
-        }
-      } else {
-        setHover(null);
-      }
-      applySelectionHighlight();
-    }
-
-    function onPointerMove(event: PointerEvent) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(pickables, false);
-      const hit = hits[0]?.object as THREE.Mesh | undefined;
-      const id = (hit?.userData?.id as string) || null;
-      renderer.domElement.style.cursor = id ? 'pointer' : 'default';
-      if (id !== hoveredId) updateHoverFromId(id);
-    }
-
-    function onPointerLeave() {
-      if (!selectedId) setHover(null);
-      hoveredId = null;
-      applySelectionHighlight();
-      renderer.domElement.style.cursor = 'default';
-    }
-
-    function onClick() {
-      if (hoveredId && hoveredId !== selectedId) {
-        selectedId = hoveredId;
-      } else {
-        selectedId = null;
-      }
-      updateHoverFromId(hoveredId);
-      const target = selectedId ? nodeMeta.get(selectedId)?.position : null;
-      if (target) {
-        controls.autoRotate = false;
-        if (idleTimer) clearTimeout(idleTimer);
-        cameraTargetGoal.copy(target);
-      } else {
-        cameraTargetGoal.set(0, 0, 0);
-      }
-    }
-
-    renderer.domElement.addEventListener('pointermove', onPointerMove);
-    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
-    renderer.domElement.addEventListener('click', onClick);
-
-    const clock = new THREE.Clock();
-    let frameId = 0;
-    let disposed = false;
-    let nextWaveAt = 0.4;
-
-    function geoDisposeSafe(mesh: THREE.Mesh) {
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.dispose();
-    }
-
-    const animate = () => {
-      if (disposed) return;
-      frameId = requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.elapsedTime;
-      const now = performance.now();
-      const entranceElapsed = (now - entranceStart) / 1000;
-
-      const layerDelay: Record<LayerKind, number> = { feature: 0, hidden: 0.25, program: 0.5 };
-      for (const n of layout.allNodes) {
-        const mesh = nodeMeshes.get(n.id)!;
-        const ring = nodeRings.get(n.id)!;
-        const localT = clamp01((entranceElapsed - layerDelay[n.kind]) / 0.6);
-        const eased = easeInOutCubic(localT);
-        const mat = mesh.material as THREE.MeshStandardMaterial;
-        mat.opacity = eased;
-        mesh.scale.setScalar(Math.max(0.01, eased));
-        const ringMat = ring.material as THREE.MeshBasicMaterial;
-        ringMat.opacity = eased * (0.2 + n.activation * 0.35);
-      }
-      for (const tube of edgeTubes) {
-        const fromKind = nodeMeta.get(tube.edge.fromId)!.kind;
-        const localT = clamp01((entranceElapsed - (layerDelay[fromKind] + 0.15)) / 0.6);
-        const mat = tube.mesh.material as THREE.MeshStandardMaterial;
-        const focusActive = selectedId || hoveredId;
-        if (!focusActive) mat.opacity = easeInOutCubic(localT) * tube.baseOpacity;
-      }
-
-      controls.update();
-
-      if (!cameraTargetGoal.equals(controls.target)) {
-        controls.target.lerp(cameraTargetGoal, 1 - Math.pow(0.001, dt));
-      }
-
-      if (!reduceMotion) {
-        for (const [id, mesh] of nodeMeshes) {
-          const meta = nodeMeta.get(id)!;
-          const mat = mesh.material as THREE.MeshStandardMaterial;
-          const pulse = 0.85 + Math.sin(t * (1.2 + meta.activation) + meta.activation * 4) * 0.15;
-          const boost = hoveredId === id || selectedId === id ? 1.35 : 1;
-          mat.emissiveIntensity = (0.35 + meta.activation * 0.9) * pulse * boost;
-          const breathe = 1 + Math.sin(t * 2 + meta.activation * 3) * 0.03 * meta.activation;
-          const focusScale = hoveredId === id || selectedId === id ? 1.12 : 1;
-          const entranceScale = mesh.scale.x;
-          if (entranceElapsed > 0.6) mesh.scale.setScalar(breathe * focusScale);
-          else mesh.scale.setScalar(Math.min(entranceScale, breathe * focusScale));
-        }
-
-        for (const child of nodeGroup.children) {
-          if (child.userData?.isRing) child.quaternion.copy(camera.quaternion);
-        }
-
-        for (const tube of edgeTubes) {
-          const mat = tube.mesh.material as THREE.MeshStandardMaterial;
-          mat.emissiveIntensity = 0.15 + tube.weight * 0.55 + Math.sin(t * 2 + tube.weight * 5) * 0.08;
-        }
-
-        if (t > nextWaveAt) {
-          fireWave(now);
-          nextWaveAt = t + 0.5 + Math.random() * 0.6;
-        }
-
-        for (let i = impulses.length - 1; i >= 0; i--) {
-          const impulse = impulses[i];
-          const edge = layout.edges[impulse.edgeIndex];
-          if (!edge) {
-            impulseGroup.remove(impulse.mesh);
-            impulses.splice(i, 1);
-            continue;
-          }
-          impulse.t += impulse.speed * dt;
-          const eased = easeInOutCubic(clamp01(impulse.t));
-          impulse.mesh.position.copy(edge.curve.getPoint(eased));
-          const mat = impulse.mesh.material as THREE.MeshStandardMaterial;
-          mat.emissiveIntensity = 1.6 + Math.sin(eased * Math.PI) * 0.8;
-          const fadeOut = impulse.t > 0.85 ? clamp01((1 - impulse.t) / 0.15) : 1;
-          mat.opacity = 0.95 * fadeOut;
-
-          if (impulse.t >= 1) {
-            if (impulse.stage === 1) {
-              const outgoing = hiddenOutgoing.get(edge.toId);
-              if (outgoing && outgoing.length) {
-                const top = outgoing.slice().sort((a, b) => b.e.weight - a.e.weight).slice(0, 2);
-                top.forEach(({ i: nextIndex }) => spawnImpulse(nextIndex, 2, now));
-              }
-            }
-            impulseGroup.remove(impulse.mesh);
-            geoDisposeSafe(impulse.mesh);
-            impulses.splice(i, 1);
-          }
-        }
-      }
-
-      composer.render();
-    };
-
-    const labelSprites: THREE.Sprite[] = [];
-    function makeLabel(text: string, color = '#e2e8f0') {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d')!;
-      ctx.clearRect(0, 0, 256, 64);
-      ctx.font = '600 22px "Plus Jakarta Sans", system-ui, sans-serif';
-      ctx.fillStyle = color;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const truncated = text.length > 22 ? `${text.slice(0, 20)}…` : text;
-      ctx.fillText(truncated, 128, 32);
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
-      );
-      sprite.scale.set(1.35, 0.34, 1);
-      return sprite;
-    }
-
-    for (const n of layout.allNodes) {
-      if (n.kind === 'hidden' && !n.label.startsWith('Twin')) continue;
-      const sprite = makeLabel(
-        n.label,
-        n.kind === 'feature' ? '#fcd34d' : n.kind === 'program' ? '#bfdbfe' : '#ffffff'
-      );
-      sprite.position.copy(n.position).add(new THREE.Vector3(0, n.kind === 'hidden' ? -0.42 : -0.38, 0));
-      labelGroup.add(sprite);
-      labelSprites.push(sprite);
-    }
-
-    const captions = [
-      { text: 'Señales', x: -3.2, color: '#fcd34d' },
-      { text: 'Twin', x: 0, color: '#93c5fd' },
-      { text: 'Programas', x: 3.2, color: '#bfdbfe' },
-    ];
-    for (const c of captions) {
-      const s = makeLabel(c.text, c.color);
-      s.position.set(c.x, 2.35, 0);
-      s.scale.set(1.1, 0.28, 1);
-      labelGroup.add(s);
-      labelSprites.push(s);
-    }
-
-    animate();
-    setReady(true);
-
-    const onResize = () => {
-      if (!mount) return;
-      const w = mount.clientWidth || width;
-      const h = Math.max(360, Math.min(480, Math.round(w * 0.62)));
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      composer.setSize(w, h);
-      bloomPass.setSize(w, h);
-    };
-    window.addEventListener('resize', onResize);
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(frameId);
-      if (idleTimer) clearTimeout(idleTimer);
-      window.removeEventListener('resize', onResize);
-      renderer.domElement.removeEventListener('pointermove', onPointerMove);
-      renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
-      renderer.domElement.removeEventListener('click', onClick);
-      controls.dispose();
-      setHover(null);
-      setReady(false);
-
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          const mat = obj.material;
-          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-          else mat.dispose();
-        }
-        if (obj instanceof THREE.Sprite) {
-          const mat = obj.material;
-          mat.map?.dispose();
-          mat.dispose();
-        }
-      });
-      composer.dispose();
-      renderer.dispose();
-      if (renderer.domElement.parentElement === mount) {
-        mount.removeChild(renderer.domElement);
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedId(null);
+        setTooltip(null);
       }
     };
-  }, [layout]);
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, []);
+
+  const focusNode = focusId ? layout.byId.get(focusId) : null;
+  const zoomTransform = `translate(${VW / 2} ${VH / 2}) scale(${zoom}) translate(${-VW / 2} ${-VH / 2})`;
 
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'relative overflow-hidden rounded-2xl border border-outline-variant/20 bg-[#070d1a]',
-        className
+        'relative overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest',
+        'dark:bg-[#070d1a]',
+        className,
       )}
     >
-      <div ref={mountRef} className="min-h-[360px] w-full" />
-
-      {!ready && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
-          Cargando red neuronal…
+      {!hasData ? (
+        <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+          <Sparkles className="h-8 w-8 text-primary" aria-hidden />
+          <p className="font-medium text-on-surface">Aún no hay red para mostrar</p>
+          <p className="max-w-sm text-sm text-on-surface-variant">
+            Completa el test vocacional para que tu red de afinidad se genere a partir de tus señales y el Digital Twin.
+          </p>
         </div>
+      ) : (
+        <>
+          <svg
+            viewBox={`0 0 ${VW} ${VH}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="block w-full"
+            style={{ aspectRatio: `${VW} / ${VH}` }}
+            role="img"
+            aria-label="Red neuronal de afinidad vocacional"
+          >
+            <title>Red neuronal de afinidad vocacional</title>
+            <desc>
+              Tres capas: señales de entrada, capa Twin y programas. El grosor de cada conexión representa su peso y el
+              color de los programas indica la afinidad.
+            </desc>
+            <defs>
+              <radialGradient id="np-bg" cx="50%" cy="40%" r="75%">
+                <stop offset="0%" stopColor="var(--surface-container-lowest)" />
+                <stop offset="100%" stopColor="var(--surface-container)" />
+              </radialGradient>
+              <filter id="np-glow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="3.2" result="b" />
+                <feMerge>
+                  <feMergeNode in="b" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <pattern id="np-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="0.5" opacity="0.08" />
+              </pattern>
+            </defs>
+
+            <rect x="0" y="0" width={VW} height={VH} fill="url(#np-bg)" className="text-on-surface" />
+            <rect x="0" y="0" width={VW} height={VH} fill="url(#np-grid)" className="text-on-surface" />
+
+            <g transform={zoomTransform}>
+              {/* Column captions */}
+              <g aria-hidden className="select-none">
+                {[
+                  { x: COL.feature, label: 'Señales', color: BRAND.feature },
+                  { x: COL.hidden, label: 'Twin', color: BRAND.hidden },
+                  { x: COL.program, label: 'Programas', color: BRAND.programHot },
+                ].map((c) => (
+                  <text
+                    key={c.label}
+                    x={c.x}
+                    y={28}
+                    textAnchor="middle"
+                    fontSize="13"
+                    fontWeight="700"
+                    fill={c.color}
+                    style={{ letterSpacing: '0.12em', textTransform: 'uppercase' }}
+                  >
+                    {c.label}
+                  </text>
+                ))}
+              </g>
+
+              {/* Edges */}
+              <g aria-hidden>
+                {layout.edges.map((e) => {
+                  const isActive = activeEdges?.has(e.id);
+                  const baseOpacity = 0.18 + e.weight * 0.5;
+                  const opacity = activeEdges
+                    ? isActive
+                      ? Math.min(1, baseOpacity + 0.35)
+                      : baseOpacity * 0.12
+                    : baseOpacity;
+                  const stroke = isActive ? BRAND.edgeActive : BRAND.edge;
+                  const sw = 0.6 + e.weight * 3.4;
+                  return (
+                    <path
+                      key={e.id}
+                      id={e.id}
+                      d={e.d}
+                      fill="none"
+                      stroke={stroke}
+                      strokeWidth={sw}
+                      strokeLinecap="round"
+                      opacity={opacity}
+                      style={{ transition: 'opacity 180ms ease, stroke 180ms ease' }}
+                    />
+                  );
+                })}
+              </g>
+
+              {/* Pulses */}
+              <g aria-hidden>
+                {pulses.map((p) => (
+                  <circle key={p.uid} r={p.radius} fill={p.color} opacity={0.95} filter="url(#np-glow)">
+                    <animateMotion
+                      dur={`${p.duration}s`}
+                      repeatCount="1"
+                      fill="freeze"
+                      path={edgeById.get(p.edgeId)?.d}
+                    />
+                  </circle>
+                ))}
+              </g>
+
+              {/* Nodes */}
+              <g>
+                {layout.allNodes.map((n) => {
+                  const r = nodeRadius(n);
+                  const fill = nodeFill(n.kind, n.activation);
+                  const isFocus = focusId === n.id;
+                  const showPct = n.kind === 'program' && (n.affinity ?? 0) >= 0.4;
+                  const delay = LAYER_DELAY[n.kind];
+                  return (
+                    <motion.g
+                      key={n.id}
+                      initial={{ opacity: 0, scale: 0.4 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
+                      style={{ transformOrigin: `${n.x}px ${n.y}px`, cursor: 'pointer' }}
+                      onPointerMove={(e) => onNodePointerMove(e, n.id)}
+                      onPointerLeave={onNodePointerLeave}
+                      onClick={() => onNodeClick(n.id)}
+                      onKeyDown={(e) => onNodeKeyDown(e, n.id)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${n.label} · ${n.kind === 'program' ? `Afinidad ${Math.round((n.affinity || 0) * 100)}%` : `Activación ${Math.round(n.activation * 100)}%`}`}
+                    >
+                      {isFocus && <circle cx={n.x} cy={n.y} r={r + 6} fill="none" stroke={fill} strokeWidth="1.5" opacity="0.6" />}
+                      <circle
+                        cx={n.x}
+                        cy={n.y}
+                        r={r}
+                        fill={fill}
+                        stroke={isFocus ? BRAND.impulse : 'rgba(255,255,255,0.25)'}
+                        strokeWidth={isFocus ? 1.5 : 0.8}
+                        filter={isFocus ? 'url(#np-glow)' : undefined}
+                      />
+                      {showPct && (
+                        <text
+                          x={n.x}
+                          y={n.y}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={r > 14 ? 9 : 8}
+                          fontWeight="700"
+                          fill="#ffffff"
+                        >
+                          {Math.round((n.affinity || 0) * 100)}
+                        </text>
+                      )}
+                      <text
+                        x={n.x}
+                        y={n.y + r + 12}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fontWeight="600"
+                        fill="var(--on-surface)"
+                      >
+                        {truncate(n.label)}
+                      </text>
+                    </motion.g>
+                  );
+                })}
+              </g>
+            </g>
+          </svg>
+        </>
       )}
 
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wide text-slate-300/90">
-        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-200">Señales</span>
-        <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-200">Activación</span>
-        <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-blue-100">Peso = grosor</span>
+      {/* Legend */}
+      <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wide">
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+          <Sparkles className="h-3 w-3" /> Señales
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-700 dark:text-sky-300">
+          <Cpu className="h-3 w-3" /> Activación
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-primary">
+          <GraduationCap className="h-3 w-3" /> Programas
+        </span>
+        <span className="hidden items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 text-on-surface-variant sm:inline-flex">
+          Peso = grosor
+        </span>
       </div>
 
-      <div
-        className={cn(
-          'pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl border border-white/10 bg-slate-950/90 p-3 text-sm shadow-lg backdrop-blur transition-opacity duration-150',
-          hover ? 'opacity-100' : 'opacity-0'
-        )}
-        aria-live="polite"
-      >
-        {hover && (
-          <>
-            <p className="font-semibold text-sky-200">
-              {hover.label}
-              {hover.locked && (
-                <span className="ml-2 text-[10px] font-normal text-slate-400">
-                  (fijado — clic para soltar)
-                </span>
-              )}
-            </p>
-            <p className="text-xs text-slate-400">
-              {hover.kind === 'program'
-                ? `Afinidad ${Math.round((hover.affinity || 0) * 100)}%`
-                : `Activación ${Math.round(hover.activation * 100)}%`}
-              {' · '}
-              {hover.kind === 'feature' ? 'Señal de entrada' : hover.kind === 'hidden' ? 'Capa Twin' : 'Programa'}
-            </p>
-            {hover.description && (
-              <p className="mt-1 line-clamp-2 text-xs text-slate-300">{hover.description}</p>
-            )}
-          </>
-        )}
+      {/* Controls */}
+      <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+        <ControlButton label={pulsesOn ? 'Pausar pulsos' : 'Reanudar pulsos'} onClick={() => setPulsesOn((v) => !v)}>
+          {pulsesOn ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+        </ControlButton>
+        <ControlButton label="Acercar" onClick={() => setZoom((z) => Math.min(2, +(z + 0.25).toFixed(2)))}>
+          <ZoomIn className="h-3.5 w-3.5" />
+        </ControlButton>
+        <ControlButton label="Alejar" onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.25).toFixed(2)))}>
+          <ZoomOut className="h-3.5 w-3.5" />
+        </ControlButton>
+        <ControlButton label="Restablecer vista" onClick={() => setZoom(1)}>
+          <Maximize className="h-3.5 w-3.5" />
+        </ControlButton>
       </div>
+
+      {/* Tooltip / Detail panel */}
+      <AnimatePresence>
+        {focusNode && tooltip && (
+          <motion.div
+            key={focusNode.id + (selectedId ? '-locked' : '-hover')}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.15 }}
+            className="pointer-events-auto absolute bottom-3 left-3 right-3 max-w-md rounded-xl border border-white/10 bg-surface-container-lowest/95 p-3 text-sm shadow-lg backdrop-blur dark:bg-slate-950/90"
+            aria-live="polite"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-primary">{focusNode.label}</p>
+                <p className="text-xs text-on-surface-variant">
+                  {focusNode.kind === 'program'
+                    ? `Afinidad ${Math.round((focusNode.affinity || 0) * 100)}%`
+                    : `Activación ${Math.round(focusNode.activation * 100)}%`}
+                  {' · '}
+                  {focusNode.kind === 'feature'
+                    ? 'Señal de entrada'
+                    : focusNode.kind === 'hidden'
+                      ? 'Capa Twin'
+                      : 'Programa'}
+                </p>
+              </div>
+              {selectedId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setTooltip(null);
+                  }}
+                  className="shrink-0 rounded-md p-1 text-on-surface-variant hover:bg-surface-container-high"
+                  aria-label="Soltar selección"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {focusNode.description && (
+              <p className="mt-1 line-clamp-2 text-xs text-on-surface">{focusNode.description}</p>
+            )}
+            {selectedId && (
+              <p className="mt-1 text-[10px] text-on-surface-variant">Fijado — clic en el nodo o Esc para soltar.</p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+function ControlButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/40 bg-surface-container-lowest/90 text-on-surface-variant shadow-sm backdrop-blur transition hover:bg-surface-container-high hover:text-primary dark:bg-slate-950/70"
+    >
+      {children}
+    </button>
+  );
+}
+
+
+
