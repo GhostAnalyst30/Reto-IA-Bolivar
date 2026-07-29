@@ -156,7 +156,7 @@ export default function LoginClient() {
         <div className="relative hidden flex-col justify-end overflow-hidden bg-[#002576] p-12 md:flex md:w-5/12">
           <div className="absolute inset-0 z-0 opacity-45 grayscale transition-all duration-700 hover:grayscale-0">
             <Image
-              src="/front/students-campus.png"
+              src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/students-campus.png"
               alt="Estudiantes de la UTB en el campus"
               fill
               className="object-cover"
@@ -169,7 +169,7 @@ export default function LoginClient() {
             <div className="mb-6">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 p-2 backdrop-blur">
                 <Image
-                  src="/front/utb-logo.png"
+                  src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/utb-logo.png"
                   alt="Logo UTB"
                   width={30}
                   height={30}

@@ -50,12 +50,12 @@ const TYPE_CLASS: Record<string, string> = {
 };
 
 const FALLBACK_IMAGES = [
-  '/front/opp-scholarship.png',
-  '/front/opp-robotics.png',
-  '/front/opp-dining.png',
-  '/front/opp-exchange.png',
-  '/front/opp-makerspace.png',
-  '/front/opp-piano.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-scholarship.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-robotics.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-dining.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-exchange.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-makerspace.png',
+  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-piano.png',
 ];
 
 function deadlineBefore(days: number): string {

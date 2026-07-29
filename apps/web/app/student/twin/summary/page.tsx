@@ -158,7 +158,7 @@ export default function TwinSummaryPage() {
         <Reveal className="glass-card flex flex-col overflow-hidden rounded-3xl md:col-span-4">
           <div className="relative h-64">
             <Image
-              src="/front/student-mateo.png"
+              src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/student-mateo.png"
               alt="Foto de perfil del estudiante"
               fill
               className="object-cover"

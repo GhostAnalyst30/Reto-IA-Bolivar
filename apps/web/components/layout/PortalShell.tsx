@@ -143,7 +143,7 @@ export function PortalShell({
               className="hidden h-10 w-10 overflow-hidden rounded-full border-2 border-primary/20 transition-transform active:scale-95 sm:block"
             >
               <Image
-                src="/front/student-mateo.png"
+                src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/student-mateo.png"
                 alt="Foto de perfil"
                 width={40}
                 height={40}
