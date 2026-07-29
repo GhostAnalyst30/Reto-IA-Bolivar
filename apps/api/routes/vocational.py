@@ -11,8 +11,8 @@ from services.program_matcher import build_recommendation
 
 router = APIRouter(prefix="/vocational", tags=["vocational"])
 
-# Un camino del árbol suele tener 5 preguntas binarias
-MIN_RESPONSES = 4
+# Cadena inicial de 10 preguntas + árbol binario (4-5) → ~15 preguntas por camino
+MIN_RESPONSES = 12
 
 
 class SubmitVocational(BaseModel):

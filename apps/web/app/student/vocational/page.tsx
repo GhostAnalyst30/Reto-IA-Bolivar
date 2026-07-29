@@ -46,8 +46,8 @@ function normalizeOptions(options?: Array<string | BinaryOption>): BinaryOption[
   });
 }
 
-/** Typical depth of the UTB binary tree (used for progress UX). */
-const EXPECTED_DEPTH = 5;
+/** Typical depth of the UTB vocational test (10 prefix + 4-5 binary tree). */
+const EXPECTED_DEPTH = 15;
 
 export default function VocationalPage() {
   const [questions, setQuestions] = useState<Question[]>([]);

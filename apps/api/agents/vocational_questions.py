@@ -14,7 +14,7 @@ pregunta (`next`) y aporta pesos a dominios alineados con el catálogo UTB:
 from __future__ import annotations
 
 # Pregunta raíz del árbol
-ROOT_QUESTION_ID = "v1"
+ROOT_QUESTION_ID = "v0_1"
 
 
 def _q(
@@ -45,6 +45,170 @@ def _q(
 
 
 VOCATIONAL_QUESTIONS: list[dict] = [
+    # ── Nivel 0: cadena inicial común (10 preguntas para todos) ───────────
+    # Cada pregunta aporta pesos a varios dominios antes de entrar al árbol
+    # binario, dando una señal más rica y un test de ~15 preguntas.
+    _q(
+        "v0_1",
+        "¿Cómo prefieres enfrentar un problema nuevo?",
+        (
+            "analyze_data",
+            "Analizando datos y buscando patrones objetivos",
+            "v0_2",
+            {"tech": 1.4, "science": 1.2, "business": 0.5},
+        ),
+        (
+            "talk_people",
+            "Conversando con personas y entendiendo su contexto",
+            "v0_2",
+            {"society": 1.4, "business": 0.8, "creative": 0.4},
+        ),
+        hint="No hay respuestas correctas: responde con lo que te salga más natural.",
+    ),
+    _q(
+        "v0_2",
+        "Cuando trabajas en equipo, ¿qué rol asumirías con más gusto?",
+        (
+            "lead_organize",
+            "Liderar, organizar y tomar decisiones",
+            "v0_3",
+            {"business": 1.5, "industrial": 0.8},
+        ),
+        (
+            "create_ideas",
+            "Crear, diseñar o proponer ideas nuevas",
+            "v0_3",
+            {"creative": 1.5, "tech": 0.4},
+        ),
+    ),
+    _q(
+        "v0_3",
+        "¿Qué tipo de entorno te hace sentir más productivo?",
+        (
+            "lab_workshop",
+            "Un laboratorio, taller o espacio técnico",
+            "v0_4",
+            {"science": 1.3, "engineering": 1.2, "industrial": 0.9},
+        ),
+        (
+            "office_studio",
+            "Una oficina, un estudio o un espacio con personas",
+            "v0_4",
+            {"business": 1.1, "creative": 1.1, "society": 0.9},
+        ),
+    ),
+    _q(
+        "v0_4",
+        "Si tuvieras tiempo libre, ¿qué elegirías hacer?",
+        (
+            "tech_tinker",
+            "Programar, armar algo digital o experimentar con tecnología",
+            "v0_5",
+            {"tech": 1.6, "engineering": 0.5},
+        ),
+        (
+            "read_write",
+            "Leer, escribir, debatir o crear contenido",
+            "v0_5",
+            {"creative": 1.3, "society": 1.0},
+        ),
+    ),
+    _q(
+        "v0_5",
+        "¿Qué te da más satisfacción?",
+        (
+            "build_work",
+            "Ver funcionar algo que diseñé o construí",
+            "v0_6",
+            {"engineering": 1.4, "tech": 1.1, "industrial": 0.8},
+        ),
+        (
+            "help_people",
+            "Ayudar a alguien a entenderse o mejorar su situación",
+            "v0_6",
+            {"society": 1.5, "creative": 0.4},
+        ),
+    ),
+    _q(
+        "v0_6",
+        "En una decisión importante, ¿en qué confías más?",
+        (
+            "evidence",
+            "En los números, la evidencia y los datos",
+            "v0_7",
+            {"tech": 1.1, "business": 1.1, "science": 1.0},
+        ),
+        (
+            "intuition",
+            "En la intuición, las personas y las emociones",
+            "v0_7",
+            {"society": 1.3, "creative": 0.9},
+        ),
+    ),
+    _q(
+        "v0_7",
+        "¿Qué tipo de problemas del mundo te gustaría abordar?",
+        (
+            "sustainability_health",
+            "Sostenibilidad, salud, ambiente o ciencia aplicada",
+            "v0_8",
+            {"science": 1.5, "industrial": 0.5},
+        ),
+        (
+            "justice_education",
+            "Justicia, educación, bienestar o convivencia social",
+            "v0_8",
+            {"society": 1.5, "creative": 0.4},
+        ),
+    ),
+    _q(
+        "v0_8",
+        "¿Cómo te imaginas tu día a día profesional ideal?",
+        (
+            "plan_ops",
+            "Planificando proyectos, procesos u operaciones",
+            "v0_9",
+            {"industrial": 1.4, "business": 1.0, "engineering": 0.5},
+        ),
+        (
+            "design_products",
+            "Diseñando productos, espacios o mensajes",
+            "v0_9",
+            {"creative": 1.5, "tech": 0.4},
+        ),
+    ),
+    _q(
+        "v0_9",
+        "¿Qué actividad te resulta más atractiva?",
+        (
+            "optimize_measure",
+            "Optimizar sistemas, medir resultados y mejorar la eficiencia",
+            "v0_10",
+            {"industrial": 1.4, "tech": 1.1},
+        ),
+        (
+            "negotiate_lead",
+            "Negociar, vender, convencer o liderar equipos",
+            "v0_10",
+            {"business": 1.5, "society": 0.6},
+        ),
+    ),
+    _q(
+        "v0_10",
+        "Si pudieras destacar en una habilidad, ¿cuál elegirías?",
+        (
+            "logical_math",
+            "Pensamiento lógico-matemático y resolución técnica",
+            "v1",
+            {"tech": 1.3, "engineering": 1.2, "science": 0.9},
+        ),
+        (
+            "communication_empathy",
+            "Comunicación, empatía y comprensión del entorno humano",
+            "v1",
+            {"society": 1.3, "creative": 0.9, "business": 0.6},
+        ),
+    ),
     # ── Nivel 1: gran bifurcación ───────────────────────────────────────────
     _q(
         "v1",
