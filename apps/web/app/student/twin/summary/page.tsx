@@ -158,7 +158,7 @@ export default function TwinSummaryPage() {
         <Reveal className="glass-card flex flex-col overflow-hidden rounded-3xl md:col-span-4">
           <div className="relative h-64">
             <Image
-              src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/student-mateo.png"
+              src="front/student-mateo.png"
               alt="Foto de perfil del estudiante"
               fill
               className="object-cover"
@@ -252,18 +252,18 @@ export default function TwinSummaryPage() {
 
           <Reveal
             delay={240}
-            className="flex flex-col items-center justify-center rounded-3xl bg-primary p-8 text-center text-on-primary shadow-xl"
+            className="flex flex-col items-center justify-center rounded-3xl bg-utb-blue p-8 text-center text-white shadow-xl"
           >
             <Wand2 className="mb-4 h-12 w-12" />
             <h4 className="mb-2 text-xl font-semibold">Sugerencia de IA</h4>
-            <p className="mb-6 text-sm opacity-90">
+            <p className="mb-6 text-sm text-white/90">
               Basado en tu Digital Twin, explora oportunidades y conversa con tu compañero
               académico.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/student/twin/chat"
-                className="rounded-full bg-white px-6 py-2 font-bold text-primary transition-transform hover:scale-105"
+                className="rounded-full bg-white px-6 py-2 font-bold text-utb-blue transition-transform hover:scale-105"
               >
                 Hablar con mi Twin
               </Link>

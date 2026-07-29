@@ -98,7 +98,7 @@ export function PortalShell({
           <ShaderBackground className="absolute inset-0 h-full w-full" />
         </div>
 
-        <header className="fixed top-0 z-50 flex h-16 w-full items-center justify-between border-b border-white/20 bg-surface/80 px-5 shadow-sm backdrop-blur-xl md:px-6">
+        <header className="fixed top-0 z-50 flex h-16 w-full items-center justify-between border-b border-outline-variant/40 bg-surface/80 px-5 shadow-sm backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-6">
             <BrandMark />
             <nav className="ml-4 hidden items-center gap-1 lg:flex">
@@ -143,7 +143,7 @@ export function PortalShell({
               className="hidden h-10 w-10 overflow-hidden rounded-full border-2 border-primary/20 transition-transform active:scale-95 sm:block"
             >
               <Image
-                src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/student-mateo.png"
+                src="front/student-mateo.png"
                 alt="Foto de perfil"
                 width={40}
                 height={40}
@@ -161,7 +161,7 @@ export function PortalShell({
           </div>
         </header>
 
-        <aside className="fixed left-0 top-0 z-40 hidden h-full w-64 flex-col border-r border-white/20 bg-surface/90 pb-8 pt-20 shadow-xl backdrop-blur-2xl md:flex">
+        <aside className="fixed left-0 top-0 z-40 hidden h-full w-64 flex-col border-r border-outline-variant/40 bg-surface/90 pb-8 pt-20 shadow-xl backdrop-blur-2xl md:flex">
           <div className="mb-8 px-6">
             <h2 className="text-2xl font-extrabold text-primary">Portal Estudiantil</h2>
             <p className="text-xs font-medium text-on-surface-variant">Compañero académico</p>
@@ -267,7 +267,7 @@ export function PortalShell({
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/20 bg-surface/90 shadow-xl backdrop-blur-2xl transition-transform lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-outline-variant/40 bg-surface/90 shadow-xl backdrop-blur-2xl transition-transform lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >

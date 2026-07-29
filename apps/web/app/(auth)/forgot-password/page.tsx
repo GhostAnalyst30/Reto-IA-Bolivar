@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
             <Label htmlFor="email">Correo institucional</Label>
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@utb.edu.co" required />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           {message && <p className="text-sm text-green-700">{message}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Enviando…' : 'Enviar enlace'}

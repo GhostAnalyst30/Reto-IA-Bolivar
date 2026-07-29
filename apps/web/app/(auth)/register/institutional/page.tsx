@@ -90,7 +90,7 @@ export default function RegisterInstitutionalPage() {
             </Select>
           </div>
           <div><Label>Clave de registro</Label><Input value={authKey} onChange={(e) => setAuthKey(e.target.value)} required placeholder="Clave proporcionada por el administrador" /></div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Registrando...' : 'Enviar solicitud'}</Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted"><Link href="/login" className="text-brand-amber hover:underline">¿Ya tienes cuenta?</Link></p>

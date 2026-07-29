@@ -10,9 +10,9 @@ export function BrandMark({
 }) {
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-primary p-1.5">
+      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-utb-blue p-1.5">
         <Image
-          src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/utb-logo.png"
+          src="front/utb-logo.png"
           alt="Logo UTB"
           width={28}
           height={28}

@@ -39,23 +39,23 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_CLASS: Record<string, string> = {
-  beca: 'bg-primary/90 text-on-primary',
+  beca: 'bg-primary text-on-primary',
   convocatoria: 'bg-tertiary-container text-on-tertiary-container',
-  evento: 'bg-primary-container text-on-primary',
+  evento: 'bg-primary-container text-on-primary-container',
   investigacion: 'bg-tertiary-container text-on-tertiary-container',
-  bienestar: 'bg-on-tertiary-fixed-variant text-white',
-  movilidad: 'bg-primary/90 text-on-primary',
+  bienestar: 'bg-tertiary text-on-tertiary',
+  movilidad: 'bg-primary text-on-primary',
   emprendimiento: 'bg-tertiary text-on-tertiary',
-  cultura: 'bg-primary-container text-on-primary',
+  cultura: 'bg-primary-container text-on-primary-container',
 };
 
 const FALLBACK_IMAGES = [
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-scholarship.png',
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-robotics.png',
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-dining.png',
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-exchange.png',
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-makerspace.png',
-  'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/opp-piano.png',
+  'front/opp-scholarship.png',
+  'front/opp-robotics.png',
+  'front/opp-dining.png',
+  'front/opp-exchange.png',
+  'front/opp-makerspace.png',
+  'front/opp-piano.png',
 ];
 
 function deadlineBefore(days: number): string {
@@ -201,7 +201,7 @@ export default function OpportunitiesPage() {
                   />
                   <div
                     className={`absolute left-4 top-4 rounded-full px-3 py-1 text-sm font-medium backdrop-blur-md ${
-                      TYPE_CLASS[opp.type] || 'bg-primary/90 text-on-primary'
+                      TYPE_CLASS[opp.type] || 'bg-primary text-on-primary'
                     }`}
                   >
                     {TYPE_LABELS[opp.type] || opp.type}
@@ -233,7 +233,7 @@ export default function OpportunitiesPage() {
                   </div>
                   <Link
                     href={`/student/opportunities/${opp.id}`}
-                    className="w-full rounded-xl bg-primary py-3 text-center text-sm font-semibold text-on-primary transition-colors hover:bg-primary-container active:scale-[0.98]"
+                    className="w-full rounded-xl bg-primary py-3 text-center text-sm font-semibold text-on-primary transition-colors hover:bg-primary-container hover:text-on-primary-container active:scale-[0.98]"
                   >
                     Ver detalle
                   </Link>

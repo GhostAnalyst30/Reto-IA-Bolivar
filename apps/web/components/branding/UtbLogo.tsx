@@ -14,7 +14,7 @@ interface UtbLogoProps {
 
 export function UtbLogo({ className, variant = 'default', showTagline = true }: UtbLogoProps) {
   const isLight = variant === 'light';
-  const titleClass = isLight ? 'text-white' : 'text-brand-blue dark:text-white';
+  const titleClass = isLight ? 'text-white' : 'text-primary';
   const taglineClass = 'text-brand-amber';
   const iconSize = variant === 'compact' ? 32 : 36;
 

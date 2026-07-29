@@ -387,7 +387,7 @@ export default function TwinChatPage() {
         type="button"
         onClick={newChat}
         disabled={streaming}
-        className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-primary-container active:scale-95 disabled:opacity-50"
+        className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-primary-container hover:text-on-primary-container active:scale-95 disabled:opacity-50"
       >
         <Plus className="h-4 w-4" /> Nueva conversación
       </button>
@@ -450,7 +450,7 @@ export default function TwinChatPage() {
             {/* Twin UTB | Humano toggle */}
             <div className="relative flex w-full max-w-md rounded-xl bg-surface-container-low p-1 md:w-auto md:min-w-[320px]">
               <span
-                className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg bg-surface-container-lowest shadow-sm transition-transform duration-300 ease-out dark:bg-surface-container-highest"
+                className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg bg-surface-container-lowest shadow-sm transition-transform duration-300 ease-out"
                 style={{
                   transform: companionMode === 'human' ? 'translateX(100%)' : 'translateX(0)',
                 }}

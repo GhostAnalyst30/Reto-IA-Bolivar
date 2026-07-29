@@ -156,7 +156,7 @@ export default function LoginClient() {
         <div className="relative hidden flex-col justify-end overflow-hidden bg-[#002576] p-12 md:flex md:w-5/12">
           <div className="absolute inset-0 z-0 opacity-45 grayscale transition-all duration-700 hover:grayscale-0">
             <Image
-              src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/students-campus.png"
+              src="front/students-campus.png"
               alt="Estudiantes de la UTB en el campus"
               fill
               className="object-cover"
@@ -169,7 +169,7 @@ export default function LoginClient() {
             <div className="mb-6">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 p-2 backdrop-blur">
                 <Image
-                  src="https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/utb-logo.png"
+                  src="front/utb-logo.png"
                   alt="Logo UTB"
                   width={30}
                   height={30}
@@ -201,7 +201,7 @@ export default function LoginClient() {
 
           <div className="relative mb-10 flex w-full rounded-xl bg-surface-container-low p-1">
             <span
-              className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-container-highest"
+              className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg bg-surface-container-lowest shadow-sm transition-transform duration-300 ease-out"
               style={{
                 transform: portal === 'institutional' ? 'translateX(100%)' : 'translateX(0)',
               }}
@@ -249,7 +249,7 @@ export default function LoginClient() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="ejemplo@utb.edu.co"
-                  className="w-full rounded-xl border border-outline-variant/50 bg-surface-container-lowest py-3.5 pl-12 pr-4 transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+                  className="w-full rounded-xl border border-outline-variant/50 bg-surface-container-lowest py-3.5 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant/60 transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                 />
               </div>
             </div>
@@ -279,7 +279,7 @@ export default function LoginClient() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border border-outline-variant/50 bg-surface-container-lowest py-3.5 pl-12 pr-12 transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+                  className="w-full rounded-xl border border-outline-variant/50 bg-surface-container-lowest py-3.5 pl-12 pr-12 text-on-surface placeholder:text-on-surface-variant/60 transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
                 />
                 <button
                   type="button"
@@ -328,7 +328,7 @@ export default function LoginClient() {
             <button
               type="submit"
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-sm font-semibold text-on-primary shadow-lg shadow-primary/20 transition-all hover:bg-primary-container active:scale-[0.98] disabled:opacity-70"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-sm font-semibold text-on-primary shadow-lg shadow-primary/20 transition-all hover:bg-primary-container hover:text-on-primary-container active:scale-[0.98] disabled:opacity-70"
             >
               {busy ? 'Ingresando…' : 'Iniciar Sesión'}
               {!busy && <ArrowRight className="h-5 w-5" />}

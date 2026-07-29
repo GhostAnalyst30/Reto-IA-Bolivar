@@ -13,10 +13,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const styles = cn(
       'inline-flex items-center justify-center rounded-xl font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 active:scale-[0.98]',
       {
-        'bg-primary text-on-primary shadow-lg shadow-primary/20 hover:bg-primary-container': variant === 'primary',
+        'bg-primary text-on-primary shadow-lg shadow-primary/20 hover:bg-primary-container hover:text-on-primary-container': variant === 'primary',
         'border border-outline-variant/50 bg-surface-container-lowest text-primary hover:bg-surface-container-low': variant === 'secondary',
-        'hover:bg-surface-container-low': variant === 'ghost',
-        'bg-red-900/40 text-red-200 hover:bg-red-900/60': variant === 'danger',
+        'text-on-surface hover:bg-surface-container-low': variant === 'ghost',
+        'bg-red-600 text-white hover:bg-red-700 dark:bg-red-900/50 dark:text-red-100 dark:hover:bg-red-900/70': variant === 'danger',
         'px-3 py-1.5 text-sm': size === 'sm',
         'px-5 py-2.5 text-sm': size === 'md',
         'px-7 py-3 text-base': size === 'lg',

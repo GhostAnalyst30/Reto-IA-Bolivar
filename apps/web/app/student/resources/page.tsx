@@ -94,7 +94,7 @@ export default function ResourcesPage() {
             className={cn(
               'relative z-10 flex-1 rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition-colors',
               tab === t.id
-                ? 'bg-surface-container-lowest text-primary shadow-sm dark:bg-surface-container-highest'
+                ? 'bg-surface-container-lowest text-primary shadow-sm'
                 : 'text-on-surface-variant hover:text-primary',
             )}
           >

@@ -17,7 +17,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       <button
         type="button"
         aria-label="Cambiar tema"
-        className="rounded-lg p-2 text-zinc-400 hover:bg-brand-surface hover:text-foreground"
+        className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
       >
         <Sun className="h-4 w-4" />
       </button>
@@ -29,7 +29,10 @@ export function ThemeToggle({ className }: { className?: string }) {
       type="button"
       aria-label={theme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'}
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className={cn('rounded-lg p-2 text-zinc-400 hover:bg-brand-surface hover:text-foreground transition-colors', className)}
+      className={cn(
+        'rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface',
+        className,
+      )}
     >
       {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </button>

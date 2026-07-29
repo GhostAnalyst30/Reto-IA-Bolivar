@@ -15,7 +15,11 @@ module.exports = {
           fixed: 'var(--primary-fixed)',
         },
         'on-primary': 'var(--on-primary)',
+        'on-primary-container': 'var(--on-primary-container)',
         'on-primary-fixed-variant': 'var(--on-primary-fixed-variant)',
+        'utb-blue': 'var(--utb-blue)',
+        'utb-blue-mid': 'var(--utb-blue-mid)',
+        'utb-blue-light': 'var(--utb-blue-light)',
         tertiary: {
           DEFAULT: 'var(--tertiary)',
           container: 'var(--tertiary-container)',

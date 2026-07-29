@@ -284,7 +284,7 @@ export default function VocationalPage() {
             <p className="text-sm text-on-surface-variant">Cargando preguntas…</p>
           ) : error && questions.length === 0 ? (
             <div className="space-y-3">
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
               <Button onClick={loadQuestions}>Reintentar</Button>
             </div>
           ) : q ? (
@@ -323,7 +323,7 @@ export default function VocationalPage() {
                 })}
               </div>
 
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
               <div className="flex gap-2">
                 <Button variant="secondary" disabled={!history.length || loading} onClick={goBack}>

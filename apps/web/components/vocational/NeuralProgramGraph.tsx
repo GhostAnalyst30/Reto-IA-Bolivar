@@ -319,7 +319,6 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       ref={containerRef}
       className={cn(
         'relative overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest',
-        'dark:bg-[#070d1a]',
         className,
       )}
     >
@@ -537,7 +536,7 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15 }}
-            className="pointer-events-auto absolute bottom-3 left-3 right-3 max-w-md rounded-xl border border-white/10 bg-surface-container-lowest/95 p-3 text-sm shadow-lg backdrop-blur dark:bg-slate-950/90"
+            className="pointer-events-auto absolute bottom-3 left-3 right-3 max-w-md rounded-xl border border-outline-variant/40 bg-surface-container-lowest/95 p-3 text-sm shadow-lg backdrop-blur"
             aria-live="polite"
           >
             <div className="flex items-start justify-between gap-2">
@@ -597,7 +596,7 @@ function ControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/40 bg-surface-container-lowest/90 text-on-surface-variant shadow-sm backdrop-blur transition hover:bg-surface-container-high hover:text-primary dark:bg-slate-950/70"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/40 bg-surface-container-lowest/90 text-on-surface-variant shadow-sm backdrop-blur transition hover:bg-surface-container-high hover:text-primary"
     >
       {children}
     </button>

@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     description: 'UTB Te acompaña es una plataforma de acompañamiento estudiantil de la Universidad Tecnológica de Bolívar, orientada a prevenir la deserción. Combina un Digital Twin psicológico (chat empático + citas con psicología), encuesta de caracterización y test vocacional, con herramientas institucionales de riesgo, CareQueue y apoyo humano.',
     url: 'https://reto-ia-bolivar.vercel.app/',
     siteName: 'UTB Te Acompaña',
-    images: [{ url: 'https://raw.githubusercontent.com/GhostAnalyst30/Reto-IA-Bolivar/main/apps/web/public/front/og.png', width: 1200, height: 630 }],
+    images: [{ url: 'front/og.png', width: 1200, height: 630 }],
     locale: 'es_CO',
     type: 'website',
   }
@@ -46,7 +46,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'light dark',
-  themeColor: '#002576',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f7fafd' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0b' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

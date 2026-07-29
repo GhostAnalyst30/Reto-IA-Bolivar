@@ -9,10 +9,12 @@
   --background: #f7fafd;
   --foreground: #181c1e;
 
+  /* Brand navy — readable as text on light surfaces; solid fills use on-primary */
   --primary: #002576;
   --primary-container: #0038a8;
   --primary-fixed: #dce1ff;
   --on-primary: #ffffff;
+  --on-primary-container: #ffffff;
   --on-primary-fixed-variant: #093cab;
 
   --tertiary: #132a62;
@@ -41,8 +43,9 @@
   --text: var(--foreground);
   --muted: var(--on-surface-variant);
   --border: var(--outline-variant);
-  --utb-blue: var(--primary);
-  --utb-blue-mid: var(--primary-container);
+  /* Fixed brand navy (logo boxes / intentional brand blocks) — never theme-flip */
+  --utb-blue: #002576;
+  --utb-blue-mid: #0038a8;
   --utb-blue-light: #4a90c2;
   --utb-orange: #f28c28;
   --privacy: #6366f1;
@@ -55,19 +58,28 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: #0a0a0b;
   --foreground: #f4f4f5;
-  /* Keep brand navy in dark mode (FRONT ZIP) */
-  --primary: #002576;
-  --primary-container: #0038a8;
+
+  /*
+   * Primary must be light enough for text-primary / icons on dark surfaces.
+   * Using navy (#002576) here made headings and nav links nearly invisible.
+   */
+  --primary: #9eb0ff;
+  --primary-container: #3d5cae;
   --primary-fixed: #1a2744;
-  --on-primary: #ffffff;
-  --on-primary-fixed-variant: #a8b8ff;
+  --on-primary: #001845;
+  --on-primary-container: #e8eeff;
+  --on-primary-fixed-variant: #9eb0ff;
+
   --tertiary: #9bafef;
   --tertiary-container: #2c417a;
   --on-tertiary: #0a152e;
   --on-tertiary-container: #c5d1ff;
   --on-tertiary-fixed-variant: #9bafef;
+
   --surface: #0a0a0b;
   --surface-container: #141416;
   --surface-container-low: #101012;
@@ -76,15 +88,18 @@
   --surface-container-lowest: #141416;
   --on-surface: #f4f4f5;
   --on-surface-variant: #a1a1aa;
+
   --secondary: #a1a1aa;
   --secondary-container: #2a2a2e;
-  --outline: #747685;
-  --outline-variant: #2a2a2e;
+
+  --outline: #8b8c9a;
+  --outline-variant: #3a3a40;
+
   --utb-blue: #002576;
   --utb-blue-mid: #0038a8;
   --utb-blue-light: #4a90c2;
   --utb-orange: #f28c28;
-  --privacy: #6366f1;
+  --privacy: #818cf8;
   --amber: var(--utb-orange);
   --blue-deep: var(--utb-blue);
 }
@@ -126,9 +141,9 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 37, 118, 0.08);
 }
 .dark .glass-card {
-  background: rgba(20, 20, 22, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+  background: rgba(20, 20, 22, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
 .glass-input {
