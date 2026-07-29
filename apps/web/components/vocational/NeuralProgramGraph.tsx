@@ -437,7 +437,7 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
                   const r = nodeRadius(n);
                   const fill = nodeFill(n.kind, n.activation);
                   const isFocus = focusId === n.id;
-                  const showPct = n.kind === 'program' && (n.affinity ?? 0) >= 0.4;
+                  const showPct = n.kind === 'program' && (n.affinity ?? 0) >= 0.2;
                   const delay = LAYER_DELAY[n.kind];
                   return (
                     <motion.g

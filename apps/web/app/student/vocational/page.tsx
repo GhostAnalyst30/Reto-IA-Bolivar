@@ -174,9 +174,12 @@ export default function VocationalPage() {
   }
 
   const showResult = completed && recommendation;
-  const graphPrograms = recommendation?.programs?.length
+  // Prefer ranked list (already sorted by affinity); fall back to top recommended.
+  // Cap at 8 so the neural graph stays readable and affinity % remain visible.
+  const graphPrograms = (recommendation?.programs?.length
     ? recommendation.programs
-    : recommendation?.recommended || [];
+    : recommendation?.recommended || []
+  ).slice(0, 8);
   const graphFeatures = recommendation?.feature_nodes?.length
     ? recommendation.feature_nodes
     : Object.entries(recommendation?.features || {}).map(([id, weight]) => ({

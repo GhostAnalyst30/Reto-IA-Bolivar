@@ -413,6 +413,21 @@ def score_programs(
     return ranked
 
 
+def _load_active_programs(sb, institution_id: str | None) -> list[dict]:
+    """Load active programs; tolerate missing domain_tags column (pre-migration 021)."""
+    cols_with_tags = "id, name, description, is_active, domain_tags"
+    cols_basic = "id, name, description, is_active"
+    for cols in (cols_with_tags, cols_basic):
+        try:
+            q = sb.table("academic_programs").select(cols).eq("is_active", True)
+            if institution_id:
+                q = q.eq("institution_id", institution_id)
+            return q.execute().data or []
+        except Exception:
+            continue
+    return []
+
+
 async def build_recommendation(user_id: str, *, persist: bool = False, top_k: int = 3) -> dict:
     sb = get_supabase()
 
@@ -461,10 +476,7 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
         )
         chat_msgs = list(reversed(msgs.data or []))
 
-    programs_q = sb.table("academic_programs").select("id, name, description, is_active, domain_tags").eq("is_active", True)
-    if inst:
-        programs_q = programs_q.eq("institution_id", inst)
-    programs = programs_q.execute().data or []
+    programs = _load_active_programs(sb, inst)
 
     char_vec = features_from_characterization(char_responses, char_questions)
     voc_vec = features_from_vocational(voc_responses, voc_questions)
