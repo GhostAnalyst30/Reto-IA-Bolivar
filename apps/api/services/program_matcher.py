@@ -94,6 +94,14 @@ CHAT_KEYWORDS = {
     "creative": ["diseño", "diseno", "creativ", "arte", "arquitect", "comunic"],
     "society": ["derecho", "psicolog", "política", "politica", "justicia", "sociedad"],
 }
+    "tech": ["program", "código", "codigo", "software", "app", "datos", "python", "sistema", "ia"],
+    "industrial": ["proceso", "planta", "logística", "logistica", "producción", "calidad"],
+    "engineering": ["máquina", "maquina", "circuito", "obra", "estructur", "mecán", "electr"],
+    "science": ["ambiental", "química", "quimica", "bioméd", "laboratorio", "ciencia"],
+    "business": ["negocio", "empresa", "emprend", "finanza", "marketing", "lider", "contab"],
+    "creative": ["diseño", "diseno", "creativ", "arte", "arquitect", "comunic"],
+    "society": ["derecho", "psicolog", "política", "politica", "justicia", "sociedad"],
+}
 
 
 def _resolve_domain(name: str) -> str | None:
@@ -134,34 +142,49 @@ def _apply_domain_weights(vec: dict[str, float], mapping: object, scale: float =
                 continue
 
 
-def features_from_characterization(responses: list[dict] | None) -> dict[str, float]:
+def _l1_norm(vec: dict[str, float]) -> float:
+    return sum(max(0.0, float(v)) for v in vec.values())
+
+
+def features_from_characterization(
+    responses: list[dict] | None,
+    questions: list[dict] | None = None,
+) -> dict[str, float]:
+    """Build a domain vector from the vocational block of characterization.
+
+    Only choice questions carrying an explicit per-option ``domain_map``
+    (c13, c15, c16-c20) feed the matcher. Likert psychometric responses
+    (c1-c12) are intentionally ignored here: they describe motivation,
+    wellbeing and learning styles, not vocational orientation, and mapping
+    learning styles to domains (visual->creative, kinestesico->industrial,
+    auditivo->business) was a stereotypical bias. Those Likert answers still
+    feed the Digital Twin (twin_agent) and dropout-risk scoring.
+    """
     vec = _empty_vector()
     if not responses:
         return vec
+    q_by_id = {q["id"]: q for q in (questions or [])}
     for r in responses:
-        tags = r.get("tags") or []
         val = r.get("value")
-        if isinstance(val, str):
-            key = val.strip().lower()
-            domain = CHOICE_TO_DOMAIN.get(key)
+        if not isinstance(val, str):
+            continue
+        q = q_by_id.get(r.get("question_id"), {})
+        opt_map = None
+        for opt in q.get("options") or []:
+            if isinstance(opt, dict) and opt.get("value") == val:
+                opt_map = opt.get("domain_map")
+                break
+        if opt_map is None:
+            # Legacy vocational tree: domain_map keyed by option value at q level
+            qmap = q.get("domain_map") or {}
+            if qmap:
+                opt_map = qmap.get(val)
+        if opt_map:
+            _apply_domain_weights(vec, opt_map)
+        else:
+            domain = CHOICE_TO_DOMAIN.get(val.strip().lower())
             if domain:
-                _add_domain(vec, domain, 2.0)
-            continue
-        if not isinstance(val, (int, float)):
-            continue
-        score = float(val)
-        if r.get("reverse"):
-            score = 6.0 - score
-        weight = max(0.0, score - 2.5)
-        for t in tags:
-            if t in ("intereses", "motivacion", "metas"):
-                continue
-            mapped = CHAR_TAG_TO_DOMAIN.get(t)
-            if mapped:
-                _add_domain(vec, mapped, weight)
-            if t == "visual":
-                _add_domain(vec, "creative", weight * 0.5)
-                _add_domain(vec, "tech", weight * 0.3)
+                _add_domain(vec, domain, 1.0)
     return _normalize(vec)
 
 
@@ -243,15 +266,27 @@ def combine_features(
     chat: dict[str, float],
     twin_boost: dict[str, float] | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Returns (combined, weights_used)."""
-    sources = []
-    weights = []
+    """Returns (combined, weights_used).
+
+    Weights are adaptive and proportional to each source's signal magnitude
+    (L1 norm), not hard-coded. Since each source vector is normalized to sum 1,
+    all present sources contribute equally when they carry comparable signal,
+    eliminating the previous fixed 35/45/20 bias that always favored the
+    vocational test over characterization and chat.
+    """
+    sources: list[dict[str, float]] = []
+    raw_weights: list[float] = []
+    labels: list[str] = []
+
     if any(characterization.values()):
         sources.append(characterization)
-        weights.append(0.35)
+        raw_weights.append(max(_l1_norm(characterization), 1e-6))
+        labels.append("characterization")
     if any(vocational.values()):
         sources.append(vocational)
-        weights.append(0.45)
+        raw_weights.append(max(_l1_norm(vocational), 1e-6))
+        labels.append("vocational")
+
     chat_merged = dict(chat)
     if twin_boost and any(twin_boost.values()):
         for k in DOMAINS:
@@ -259,73 +294,93 @@ def combine_features(
         chat_merged = _normalize(chat_merged)
     if any(chat_merged.values()):
         sources.append(chat_merged)
-        weights.append(0.20)
+        raw_weights.append(max(_l1_norm(chat_merged), 1e-6))
+        labels.append("chat")
 
     if not sources:
         return _empty_vector(), {}
 
-    total_w = sum(weights)
-    weights = [w / total_w for w in weights]
+    total_w = sum(raw_weights)
+    weights = [w / total_w for w in raw_weights]
     combined = _empty_vector()
     for src, w in zip(sources, weights):
         for k in DOMAINS:
             combined[k] += src.get(k, 0) * w
-    return _normalize(combined), {
-        "characterization": 0.35 if any(characterization.values()) else 0,
-        "vocational": 0.45 if any(vocational.values()) else 0,
-        "chat": 0.20 if any(chat_merged.values()) else 0,
-    }
+    return _normalize(combined), {label: w for label, w in zip(labels, weights)}
 
 
-def program_domain_affinity(name: str, description: str | None = None) -> dict[str, float]:
+_EXPLICIT_PROGRAM_WEIGHTS: list[tuple[str, dict[str, float]]] = [
+    ("sistemas", {"tech": 1.0}),
+    ("ciencia de datos", {"tech": 0.75, "science": 0.25}),
+    ("industrial", {"industrial": 1.0}),
+    ("civil", {"engineering": 1.0}),
+    ("eléctrica", {"engineering": 1.0}),
+    ("electrica", {"engineering": 1.0}),
+    ("electrónica", {"engineering": 0.85, "tech": 0.15}),
+    ("electronica", {"engineering": 0.85, "tech": 0.15}),
+    ("mecánica", {"engineering": 1.0}),
+    ("mecanica", {"engineering": 1.0}),
+    ("mecatrónica", {"engineering": 0.7, "tech": 0.3}),
+    ("mecatronica", {"engineering": 0.7, "tech": 0.3}),
+    ("naval", {"engineering": 1.0}),
+    ("ambiental", {"science": 0.85, "industrial": 0.15}),
+    ("química", {"science": 0.9, "industrial": 0.1}),
+    ("quimica", {"science": 0.9, "industrial": 0.1}),
+    ("biomédica", {"science": 0.7, "engineering": 0.3}),
+    ("biomedica", {"science": 0.7, "engineering": 0.3}),
+    ("arquitectura", {"creative": 0.75, "engineering": 0.25}),
+    ("diseño", {"creative": 1.0}),
+    ("diseno", {"creative": 1.0}),
+    ("comunicación social", {"creative": 0.85, "society": 0.15}),
+    ("comunicacion social", {"creative": 0.85, "society": 0.15}),
+    ("marketing", {"business": 0.65, "creative": 0.25, "tech": 0.1}),
+    ("administración", {"business": 1.0}),
+    ("administracion", {"business": 1.0}),
+    ("contaduría", {"business": 1.0}),
+    ("contaduria", {"business": 1.0}),
+    ("economía", {"business": 0.85, "society": 0.15}),
+    ("economia", {"business": 0.85, "society": 0.15}),
+    ("finanzas", {"business": 1.0}),
+    ("derecho", {"society": 1.0}),
+    ("ciencia política", {"society": 0.9, "business": 0.1}),
+    ("ciencia politica", {"society": 0.9, "business": 0.1}),
+    ("psicología", {"society": 0.9, "science": 0.1}),
+    ("psicologia", {"society": 0.9, "science": 0.1}),
+    # Generic "ingeniería" needle: any program with "Ingeniería" in its name
+    # carries engineering affinity on top of its specific family match. This is
+    # only used when domain_tags are absent (DB tags take priority in production).
+    ("ingeniería", {"engineering": 1.0}),
+    ("ingenieria", {"engineering": 1.0}),
+]
+
+
+def program_domain_affinity(
+    name: str,
+    description: str | None = None,
+    domain_tags: dict | None = None,
+) -> dict[str, float]:
+    """Domain vector for a program.
+
+    Priority:
+      1. ``domain_tags`` from the DB (the curated source of truth, set by the
+         021 migration). Removes the keyword-heuristic bias.
+      2. Accumulate ALL explicit substring matches (no ``break``): a program
+         named "Ingeniería Ambiental" now contributes science + industrial +
+         engineering instead of only the first match.
+      3. Keyword fallback for programs without any explicit match.
+    """
+    if domain_tags:
+        vec = {d: float(domain_tags.get(d, 0.0)) for d in DOMAINS}
+        return _normalize(vec)
+
     blob = f"{name} {description or ''}".lower()
     vec = _empty_vector()
-
-    # Emparejamientos explícitos por programa UTB (más estables que keywords sueltas)
-    explicit: list[tuple[str, dict[str, float]]] = [
-        ("sistemas", {"tech": 1.0}),
-        ("ciencia de datos", {"tech": 0.75, "science": 0.25}),
-        ("industrial", {"industrial": 1.0}),
-        ("civil", {"engineering": 1.0}),
-        ("eléctrica", {"engineering": 1.0}),
-        ("electrica", {"engineering": 1.0}),
-        ("electrónica", {"engineering": 0.85, "tech": 0.15}),
-        ("electronica", {"engineering": 0.85, "tech": 0.15}),
-        ("mecánica", {"engineering": 1.0}),
-        ("mecanica", {"engineering": 1.0}),
-        ("mecatrónica", {"engineering": 0.7, "tech": 0.3}),
-        ("mecatronica", {"engineering": 0.7, "tech": 0.3}),
-        ("naval", {"engineering": 1.0}),
-        ("ambiental", {"science": 0.85, "industrial": 0.15}),
-        ("química", {"science": 0.9, "industrial": 0.1}),
-        ("quimica", {"science": 0.9, "industrial": 0.1}),
-        ("biomédica", {"science": 0.7, "engineering": 0.3}),
-        ("biomedica", {"science": 0.7, "engineering": 0.3}),
-        ("arquitectura", {"creative": 0.75, "engineering": 0.25}),
-        ("diseño", {"creative": 1.0}),
-        ("diseno", {"creative": 1.0}),
-        ("comunicación social", {"creative": 0.85, "society": 0.15}),
-        ("comunicacion social", {"creative": 0.85, "society": 0.15}),
-        ("marketing", {"business": 0.65, "creative": 0.25, "tech": 0.1}),
-        ("administración", {"business": 1.0}),
-        ("administracion", {"business": 1.0}),
-        ("contaduría", {"business": 1.0}),
-        ("contaduria", {"business": 1.0}),
-        ("economía", {"business": 0.85, "society": 0.15}),
-        ("economia", {"business": 0.85, "society": 0.15}),
-        ("finanzas", {"business": 1.0}),
-        ("derecho", {"society": 1.0}),
-        ("ciencia política", {"society": 0.9, "business": 0.1}),
-        ("ciencia politica", {"society": 0.9, "business": 0.1}),
-        ("psicología", {"society": 0.9, "science": 0.1}),
-        ("psicologia", {"society": 0.9, "science": 0.1}),
-    ]
-    for needle, weights in explicit:
+    for needle, weights in _EXPLICIT_PROGRAM_WEIGHTS:
         if needle in blob:
             for d, w in weights.items():
                 vec[d] += w
-            break
-    else:
+
+    if not any(vec.values()):
         for domain, kws in DOMAIN_KEYWORDS.items():
             hits = sum(1 for kw in kws if kw in blob)
             vec[domain] += float(hits)
@@ -342,7 +397,11 @@ def score_programs(
 ) -> list[dict]:
     ranked = []
     for p in programs:
-        pvec = program_domain_affinity(p.get("name") or "", p.get("description"))
+        pvec = program_domain_affinity(
+            p.get("name") or "",
+            p.get("description"),
+            domain_tags=p.get("domain_tags"),
+        )
         score = sum(student_vec.get(d, 0) * pvec.get(d, 0) for d in DOMAINS)
         ranked.append({
             "id": p.get("id"),
@@ -368,9 +427,16 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
     twin_res = sb.table("digital_twin_profiles").select("*").eq("user_id", user_id).limit(1).execute()
     twin = twin_res.data[0] if twin_res.data else None
 
-    psych = sb.table("psychometric_assessments").select("responses, status").eq("user_id", user_id).limit(1).execute()
+    psych = sb.table("psychometric_assessments").select("responses, status, questions").eq("user_id", user_id).limit(1).execute()
     psych_row = psych.data[0] if psych.data else None
     char_responses = (psych_row or {}).get("responses") if (psych_row or {}).get("status") == "completed" else None
+    char_questions = (psych_row or {}).get("questions")
+    if not char_questions:
+        try:
+            from agents.question_agent import get_fixed_questions
+            char_questions = get_fixed_questions()
+        except Exception:
+            char_questions = []
 
     voc = sb.table("vocational_assessments").select("*").eq("user_id", user_id).limit(1).execute()
     voc_row = voc.data[0] if voc.data else None
@@ -403,18 +469,53 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
         )
         chat_msgs = list(reversed(msgs.data or []))
 
-    programs_q = sb.table("academic_programs").select("id, name, description, is_active").eq("is_active", True)
+    programs_q = sb.table("academic_programs").select("id, name, description, is_active, domain_tags").eq("is_active", True)
     if inst:
         programs_q = programs_q.eq("institution_id", inst)
     programs = programs_q.execute().data or []
 
-    char_vec = features_from_characterization(char_responses)
+    char_vec = features_from_characterization(char_responses, char_questions)
     voc_vec = features_from_vocational(voc_responses, voc_questions)
     chat_vec = features_from_chat(chat_msgs)
     twin_vec = features_from_twin(twin)
     combined, weights = combine_features(char_vec, voc_vec, chat_vec, twin_vec)
 
     ranked = score_programs(combined, programs)
+
+    # ── Capa ligera de embeddings (blend dominio + similitud textual) ───────────
+    student_text = _build_student_text(char_responses, char_questions, voc_responses, voc_questions)
+    embedding_used = False
+    if student_text:
+        try:
+            from core.embeddings import embed_text, cosine_sim
+            student_emb = await embed_text(student_text)
+            prog_emb_rows = sb.table("program_embeddings").select("program_id, embedding").execute().data or []
+            emb_by_pid = {row["program_id"]: row["embedding"] for row in prog_emb_rows}
+            if student_emb and emb_by_pid:
+                sims = {}
+                for r in ranked:
+                    pid = r.get("id")
+                    pvec = emb_by_pid.get(pid)
+                    if pvec:
+                        sims[pid] = cosine_sim(student_emb, pvec)
+                if sims:
+                    max_domain = max((r["score"] for r in ranked), default=0.0) or 1.0
+                    max_sim = max(sims.values()) or 1.0
+                    for r in ranked:
+                        domain_norm = r["score"] / max_domain
+                        sim_norm = sims.get(r["id"], 0.0) / max_sim
+                        blended = 0.7 * domain_norm + 0.3 * sim_norm
+                        r["embedding_sim"] = round(float(sims.get(r["id"], 0.0)), 4)
+                        r["final_score"] = round(float(blended), 4)
+                    ranked.sort(key=lambda x: x.get("final_score", x["score"]), reverse=True)
+                    if ranked and ranked[0].get("final_score", 0) > 0:
+                        top_s = ranked[0]["final_score"]
+                        for r in ranked:
+                            r["affinity"] = round(r["final_score"] / top_s, 4) if top_s else 0.0
+                    embedding_used = True
+        except Exception:
+            embedding_used = False
+
     top = ranked[:top_k]
 
     feature_nodes = [
@@ -426,18 +527,6 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
         for d in DOMAINS
         if combined.get(d, 0) > 0.05
     ]
-    if twin and twin.get("learning_style"):
-        feature_nodes.append({
-            "id": "style",
-            "label": f"estilo:{twin['learning_style']}",
-            "weight": 0.5,
-        })
-    for interest in (twin or {}).get("interests") or []:
-        feature_nodes.append({
-            "id": f"int-{interest[:24]}",
-            "label": interest,
-            "weight": 0.4,
-        })
 
     payload = {
         "features": combined,
@@ -448,7 +537,9 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
             "vocational": bool(voc_responses),
             "chat": bool(chat_msgs),
             "twin": bool(twin),
+            "embedding": embedding_used,
         },
+        "student_text": student_text,
         "programs": ranked,
         "recommended": top,
         "programs_active_count": len(programs),
@@ -462,3 +553,46 @@ async def build_recommendation(user_id: str, *, persist: bool = False, top_k: in
         }).eq("user_id", user_id).execute()
 
     return payload
+
+
+def _build_student_text(
+    char_responses: list[dict] | None,
+    char_questions: list[dict] | None,
+    voc_responses: list[dict] | None,
+    voc_questions: list[dict] | None,
+) -> str:
+    """Concatenate the labels of the chosen options as the student's 'voice'.
+
+    This text is embedded and compared against program embeddings, so the
+    recommendation aligns to what the student actually answered rather than
+    only to hand-picked domain keywords.
+    """
+    fragments: list[str] = []
+
+    char_q_by_id = {q["id"]: q for q in (char_questions or [])}
+    for r in char_responses or []:
+        val = r.get("value")
+        if not isinstance(val, str):
+            continue
+        q = char_q_by_id.get(r.get("question_id"), {})
+        for opt in q.get("options") or []:
+            if isinstance(opt, dict) and opt.get("value") == val:
+                fragments.append(opt.get("label") or val)
+                break
+        else:
+            fragments.append(val)
+
+    voc_q_by_id = {q["id"]: q for q in (voc_questions or [])}
+    for r in voc_responses or []:
+        val = r.get("value")
+        if not isinstance(val, str):
+            continue
+        q = voc_q_by_id.get(r.get("question_id"), {})
+        for opt in q.get("options") or []:
+            if isinstance(opt, dict) and opt.get("value") == val:
+                fragments.append(opt.get("label") or val)
+                break
+        else:
+            fragments.append(val)
+
+    return ". ".join(fragments)

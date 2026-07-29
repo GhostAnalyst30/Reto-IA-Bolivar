@@ -26,9 +26,11 @@ interface Question {
 interface Recommendation {
   feature_nodes?: { id: string; label: string; weight: number }[];
   features?: Record<string, number>;
-  recommended?: { id?: string; name: string; description?: string; affinity?: number; score?: number }[];
-  programs?: { id?: string; name: string; description?: string; affinity?: number; score?: number }[];
+  recommended?: { id?: string; name: string; description?: string; affinity?: number; score?: number; final_score?: number; embedding_sim?: number }[];
+  programs?: { id?: string; name: string; description?: string; affinity?: number; score?: number; final_score?: number; embedding_sim?: number }[];
   sources?: Record<string, boolean>;
+  source_weights?: Record<string, number>;
+  student_text?: string;
   programs_active_count?: number;
 }
 
@@ -210,9 +212,19 @@ export default function VocationalPage() {
               Fuentes: caracterización {recommendation.sources?.characterization ? '✓' : '—'} ·
               test {recommendation.sources?.vocational ? '✓' : '—'} · chat twin{' '}
               {recommendation.sources?.chat ? '✓' : '—'} · perfil twin{' '}
-              {recommendation.sources?.twin ? '✓' : '—'}
+              {recommendation.sources?.twin ? '✓' : '—'} · embedding{' '}
+              {recommendation.sources?.embedding ? '✓' : '—'}
               {typeof recommendation.programs_active_count === 'number' &&
                 ` · ${recommendation.programs_active_count} programas activos`}
+            </p>
+            <p className="text-xs text-on-surface-variant">
+              {recommendation.sources?.embedding
+                ? 'Alineado a tus respuestas · blend 70% dominio + 30% embedding textual.'
+                : 'Alineado a tus respuestas vía vector de dominio (embedding no disponible).'}
+              {recommendation.source_weights &&
+                ` Pesos: ${Object.entries(recommendation.source_weights)
+                  .map(([k, v]) => `${k} ${Math.round((v as number) * 100)}%`)
+                  .join(' · ')}.`}
             </p>
             <NeuralProgramGraph features={graphFeatures} programs={graphPrograms} />
           </Card>
@@ -234,6 +246,8 @@ export default function VocationalPage() {
                     <p className="font-semibold text-primary">{p.name}</p>
                     <p className="text-xs text-on-surface-variant">
                       Afinidad {Math.round((p.affinity || 0) * 100)}%
+                      {typeof p.embedding_sim === 'number' && p.embedding_sim > 0 &&
+                        ` · similitud ${Math.round(p.embedding_sim * 100)}%`}
                     </p>
                     {p.description && (
                       <p className="mt-1 text-sm text-on-surface">{p.description}</p>

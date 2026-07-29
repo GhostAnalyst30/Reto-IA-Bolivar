@@ -11,7 +11,8 @@ from routes.deps import require_student
 
 router = APIRouter(prefix="/psychometric", tags=["psychometric"])
 
-MIN_RESPONSES = 10
+# Banco fijo: c1-c12 psicométrico + c13-c20 vocacional (20 preguntas).
+MIN_RESPONSES = 12
 
 
 class SubmitPsychometric(BaseModel):

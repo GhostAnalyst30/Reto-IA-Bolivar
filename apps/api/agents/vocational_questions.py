@@ -25,7 +25,13 @@ def _q(
     *,
     hint: str | None = None,
 ) -> dict:
-    """left/right = (value, label, next_id|None, domain_weights)."""
+    """left/right = (value, label, next_id|None, domain_weights).
+
+    Each option's domain_weights is normalized to sum 1.0 so that every
+    question contributes the same total weight regardless of the domain.
+    This removes the magnitude bias where tech-heavy paths accumulated
+    more weight than other paths.
+    """
     lv, ll, ln, ld = left
     rv, rl, rn, rd = right
     item: dict = {
@@ -36,12 +42,20 @@ def _q(
             {"value": lv, "label": ll, "next": ln},
             {"value": rv, "label": rl, "next": rn},
         ],
-        "domain_map": {lv: ld, rv: rd},
+        "domain_map": {lv: _normalize_weights(ld), rv: _normalize_weights(rd)},
         "tags": ["dominio"],
     }
     if hint:
         item["hint"] = hint
     return item
+
+
+def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
+    """Scale weights so they sum to 1.0 (preserves relative proportions)."""
+    total = sum(max(0.0, float(w)) for w in weights.values())
+    if total <= 0:
+        return {k: 0.0 for k in weights}
+    return {k: max(0.0, float(v)) / total for k, v in weights.items()}
 
 
 VOCATIONAL_QUESTIONS: list[dict] = [

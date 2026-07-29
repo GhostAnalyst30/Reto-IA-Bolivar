@@ -7,11 +7,17 @@ import { ActionOverlay } from '@/components/ui/ActionOverlay';
 import { proxyJson } from '@/lib/proxy';
 import { RefreshCw } from 'lucide-react';
 
+interface ChoiceOption {
+  value: string;
+  label: string;
+  domain_map?: Record<string, number>;
+}
+
 interface Question {
   id: string;
   text: string;
   type: string;
-  options?: string[];
+  options?: Array<string | ChoiceOption>;
   tags?: string[];
 }
 
@@ -167,18 +173,23 @@ export default function SurveyPage() {
           )}
           {q.type === 'choice' && q.options && (
             <div className="space-y-2">
-              {q.options.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setAnswer(opt)}
-                  className={`block w-full rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
-                    responses[q.id] === opt ? 'border-brand-amber bg-brand-amber/20' : 'border-brand-border hover:bg-brand-bg'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
+              {q.options.map((opt) => {
+                const isObj = typeof opt !== 'string';
+                const value = isObj ? opt.value : opt;
+                const label = isObj ? opt.label : opt;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAnswer(value)}
+                    className={`block w-full rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
+                      responses[q.id] === value ? 'border-brand-amber bg-brand-amber/20' : 'border-brand-border hover:bg-brand-bg'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

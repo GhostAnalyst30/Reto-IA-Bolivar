@@ -39,6 +39,8 @@ INCREMENTAL = [
     SUPABASE / "017_retention_os.sql",
     SUPABASE / "018_four_roles.sql",
     SUPABASE / "019_psychology_appointments.sql",
+    SUPABASE / "020_utb_programs_catalog.sql",
+    SUPABASE / "021_program_domains_and_embeddings.sql",
 ]
 
 PATCHES = {p.stem.split("_", 1)[0]: p for p in INCREMENTAL}
