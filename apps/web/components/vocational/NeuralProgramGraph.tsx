@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { cn } from '@/lib/utils';
 
 export interface GraphFeatureNode {
@@ -46,11 +50,14 @@ interface GraphEdge {
   toId: string;
 }
 
-interface Impulse {
+/** Traveling pulse: stage 1 = feature→hidden, stage 2 = hidden→program. */
+interface CascadeImpulse {
   edgeIndex: number;
+  stage: 1 | 2;
   t: number;
   speed: number;
   mesh: THREE.Mesh;
+  born: number;
 }
 
 const COLORS = {
@@ -60,6 +67,7 @@ const COLORS = {
   program: 0x002576,
   programHot: 0x0ea5e9,
   edge: 0x64748b,
+  edgeActive: 0x93c5fd,
   impulse: 0xffffff,
   glow: 0x60a5fa,
 };
@@ -80,7 +88,7 @@ function buildLayout(features: GraphFeatureNode[], programs: GraphProgram[]) {
       label: f.label,
       kind: 'feature' as const,
       activation: clamp01(f.weight || 0.2),
-      position: new THREE.Vector3(-3.2, (t - 0.5) * 3.6, (Math.sin(i * 1.7) * 0.25)),
+      position: new THREE.Vector3(-3.2, (t - 0.5) * 3.6, Math.sin(i * 1.7) * 0.25),
     };
   });
 
@@ -157,15 +165,19 @@ function nodeColor(kind: LayerKind, activation: number) {
   return new THREE.Color(COLORS.program).lerp(new THREE.Color(COLORS.programHot), activation);
 }
 
+function easeInOutCubic(x: number) {
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
 export function NeuralProgramGraph({ features, programs, className }: NeuralProgramGraphProps) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{
     label: string;
     affinity?: number;
     description?: string;
     kind: LayerKind;
     activation: number;
+    locked: boolean;
   } | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -197,6 +209,31 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
     renderer.domElement.style.display = 'block';
     renderer.domElement.setAttribute('aria-label', 'Red neuronal de afinidad vocacional');
 
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minDistance = 5;
+    controls.maxDistance = 13;
+    controls.minPolarAngle = Math.PI * 0.3;
+    controls.maxPolarAngle = Math.PI * 0.7;
+    controls.autoRotate = !reduceMotion;
+    controls.autoRotateSpeed = 0.6;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const resumeAutoRotateAfterIdle = () => {
+      controls.autoRotate = false;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!reduceMotion) controls.autoRotate = true;
+      }, 3500);
+    };
+    controls.addEventListener('start', resumeAutoRotateAfterIdle);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.55, 0.5, 0.18);
+    composer.addPass(bloomPass);
+
     const ambient = new THREE.AmbientLight(0x9fb4d9, 0.55);
     const key = new THREE.PointLight(0x7dd3fc, 1.4, 30);
     key.position.set(2.5, 3, 5);
@@ -206,7 +243,6 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
     rim.position.set(0, 2, -4);
     scene.add(ambient, key, fill, rim);
 
-    // Soft ground grid for depth
     const grid = new THREE.GridHelper(12, 24, 0x1e3a5f, 0x13233a);
     grid.position.y = -2.4;
     const gridMats = Array.isArray(grid.material) ? grid.material : [grid.material];
@@ -224,7 +260,10 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
     graphRoot.add(nodeGroup, edgeGroup, impulseGroup, labelGroup);
     scene.add(graphRoot);
 
+    const entranceStart = performance.now();
+
     const nodeMeshes = new Map<string, THREE.Mesh>();
+    const nodeRings = new Map<string, THREE.Mesh>();
     const nodeMeta = new Map<string, GraphNode>();
     const pickables: THREE.Object3D[] = [];
 
@@ -238,22 +277,24 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
         emissiveIntensity: 0.35 + n.activation * 0.9,
         roughness: 0.35,
         metalness: 0.25,
+        transparent: true,
+        opacity: 0,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.copy(n.position);
+      mesh.scale.setScalar(0.01);
       mesh.userData = { id: n.id, kind: n.kind };
       nodeGroup.add(mesh);
       nodeMeshes.set(n.id, mesh);
       nodeMeta.set(n.id, n);
       if (n.kind === 'program' || n.kind === 'feature') pickables.push(mesh);
 
-      // Outer activation ring
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(radius * 1.35, radius * 1.55, 48),
         new THREE.MeshBasicMaterial({
           color,
           transparent: true,
-          opacity: 0.2 + n.activation * 0.35,
+          opacity: 0,
           side: THREE.DoubleSide,
           depthWrite: false,
         })
@@ -262,62 +303,267 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       ring.lookAt(camera.position);
       ring.userData = { parentId: n.id, isRing: true };
       nodeGroup.add(ring);
+      nodeRings.set(n.id, ring);
     }
 
-    // Edges as tubes — thickness encodes weight
-    const edgeTubes: { mesh: THREE.Mesh; weight: number; edge: GraphEdge }[] = [];
+    const edgeTubes: { mesh: THREE.Mesh; weight: number; edge: GraphEdge; baseOpacity: number }[] = [];
     for (const edge of layout.edges) {
       const tubularSegments = 48;
       const radius = 0.012 + edge.weight * 0.055;
       const geo = new THREE.TubeGeometry(edge.curve, tubularSegments, radius, 8, false);
+      const baseOpacity = 0.28 + edge.weight * 0.55;
       const mat = new THREE.MeshStandardMaterial({
         color: COLORS.edge,
         emissive: new THREE.Color(COLORS.glow),
         emissiveIntensity: 0.15 + edge.weight * 0.55,
         transparent: true,
-        opacity: 0.28 + edge.weight * 0.55,
+        opacity: 0,
         roughness: 0.4,
         metalness: 0.1,
       });
       const mesh = new THREE.Mesh(geo, mat);
       edgeGroup.add(mesh);
-      edgeTubes.push({ mesh, weight: edge.weight, edge });
+      edgeTubes.push({ mesh, weight: edge.weight, edge, baseOpacity });
     }
 
-    // Impulses travel along weighted edges
-    const impulses: Impulse[] = [];
-    if (!reduceMotion && layout.edges.length) {
-      const impulseGeo = new THREE.SphereGeometry(0.045, 12, 12);
-      const strongEdges = layout.edges
-        .map((e, i) => ({ e, i }))
-        .sort((a, b) => b.e.weight - a.e.weight)
-        .slice(0, Math.min(18, layout.edges.length));
+    const impulses: CascadeImpulse[] = [];
+    const impulseGeo = new THREE.SphereGeometry(0.05, 12, 12);
+    const featureToHidden = layout.edges
+      .map((e, i) => ({ e, i }))
+      .filter(({ e }) => nodeMeta.get(e.fromId)?.kind === 'feature');
+    const hiddenOutgoing = new Map<string, { e: GraphEdge; i: number }[]>();
+    layout.edges.forEach((e, i) => {
+      if (nodeMeta.get(e.fromId)?.kind === 'hidden') {
+        const list = hiddenOutgoing.get(e.fromId) || [];
+        list.push({ e, i });
+        hiddenOutgoing.set(e.fromId, list);
+      }
+    });
 
-      for (const { e, i } of strongEdges) {
-        const count = e.weight > 0.55 ? 2 : 1;
-        for (let k = 0; k < count; k++) {
-          const mat = new THREE.MeshStandardMaterial({
-            color: COLORS.impulse,
-            emissive: new THREE.Color(e.weight > 0.5 ? COLORS.feature : COLORS.glow),
-            emissiveIntensity: 1.8,
-            roughness: 0.2,
-            metalness: 0.1,
-          });
-          const mesh = new THREE.Mesh(impulseGeo, mat);
-          const t0 = (k / count + Math.random() * 0.4) % 1;
-          mesh.position.copy(e.curve.getPoint(t0));
-          impulseGroup.add(mesh);
-          impulses.push({
-            edgeIndex: i,
-            t: t0,
-            speed: 0.18 + e.weight * 0.55 + Math.random() * 0.12,
-            mesh,
+    function spawnImpulse(edgeIndex: number, stage: 1 | 2, now: number) {
+      const edge = layout.edges[edgeIndex];
+      if (!edge) return;
+      const mat = new THREE.MeshStandardMaterial({
+        color: COLORS.impulse,
+        emissive: new THREE.Color(edge.weight > 0.5 ? COLORS.feature : COLORS.glow),
+        emissiveIntensity: 2,
+        roughness: 0.2,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.95,
+      });
+      const mesh = new THREE.Mesh(impulseGeo, mat);
+      mesh.position.copy(edge.curve.getPoint(0));
+      mesh.scale.setScalar(0.6 + edge.weight * 0.7);
+      impulseGroup.add(mesh);
+      impulses.push({ edgeIndex, stage, t: 0, speed: 0.55 + edge.weight * 0.35, mesh, born: now });
+    }
+
+    function fireWave(now: number) {
+      if (!featureToHidden.length) return;
+      const weighted = featureToHidden.slice().sort((a, b) => b.e.weight - a.e.weight);
+      const pick = weighted[Math.floor(Math.random() * Math.min(6, weighted.length))];
+      if (pick) spawnImpulse(pick.i, 1, now);
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let hoveredId: string | null = null;
+    let selectedId: string | null = null;
+    const cameraTargetGoal = new THREE.Vector3(0, 0, 0);
+
+    function connectedEdgeIndices(nodeId: string) {
+      const set = new Set<number>();
+      layout.edges.forEach((e, i) => {
+        if (e.fromId === nodeId || e.toId === nodeId) set.add(i);
+      });
+      return set;
+    }
+
+    function applySelectionHighlight() {
+      const focusId = selectedId || hoveredId;
+      const active = focusId ? connectedEdgeIndices(focusId) : null;
+      edgeTubes.forEach((tube, i) => {
+        const mat = tube.mesh.material as THREE.MeshStandardMaterial;
+        if (!active) {
+          mat.opacity = tube.baseOpacity;
+        } else if (active.has(i)) {
+          mat.color.setHex(COLORS.edgeActive);
+          mat.opacity = Math.min(1, tube.baseOpacity + 0.4);
+        } else {
+          mat.color.setHex(COLORS.edge);
+          mat.opacity = tube.baseOpacity * 0.12;
+        }
+      });
+    }
+
+    function updateHoverFromId(id: string | null) {
+      hoveredId = id;
+      const activeId = selectedId || id;
+      if (activeId) {
+        const meta = nodeMeta.get(activeId);
+        if (meta) {
+          setHover({
+            label: meta.label,
+            affinity: meta.affinity,
+            description: meta.description,
+            kind: meta.kind,
+            activation: meta.activation,
+            locked: !!selectedId,
           });
         }
+      } else {
+        setHover(null);
+      }
+      applySelectionHighlight();
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(pickables, false);
+      const hit = hits[0]?.object as THREE.Mesh | undefined;
+      const id = (hit?.userData?.id as string) || null;
+      renderer.domElement.style.cursor = id ? 'pointer' : 'default';
+      if (id !== hoveredId) updateHoverFromId(id);
+    }
+
+    function onPointerLeave() {
+      if (!selectedId) setHover(null);
+      hoveredId = null;
+      applySelectionHighlight();
+      renderer.domElement.style.cursor = 'default';
+    }
+
+    function onClick() {
+      if (hoveredId && hoveredId !== selectedId) {
+        selectedId = hoveredId;
+      } else {
+        selectedId = null;
+      }
+      updateHoverFromId(hoveredId);
+      const target = selectedId ? nodeMeta.get(selectedId)?.position : null;
+      if (target) {
+        controls.autoRotate = false;
+        if (idleTimer) clearTimeout(idleTimer);
+        cameraTargetGoal.copy(target);
+      } else {
+        cameraTargetGoal.set(0, 0, 0);
       }
     }
 
-    // HTML labels via CSS2D would need extra deps — use sprite-like canvas textures for key labels
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
+    renderer.domElement.addEventListener('click', onClick);
+
+    const clock = new THREE.Clock();
+    let frameId = 0;
+    let disposed = false;
+    let nextWaveAt = 0.4;
+
+    function geoDisposeSafe(mesh: THREE.Mesh) {
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      mat.dispose();
+    }
+
+    const animate = () => {
+      if (disposed) return;
+      frameId = requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t = clock.elapsedTime;
+      const now = performance.now();
+      const entranceElapsed = (now - entranceStart) / 1000;
+
+      const layerDelay: Record<LayerKind, number> = { feature: 0, hidden: 0.25, program: 0.5 };
+      for (const n of layout.allNodes) {
+        const mesh = nodeMeshes.get(n.id)!;
+        const ring = nodeRings.get(n.id)!;
+        const localT = clamp01((entranceElapsed - layerDelay[n.kind]) / 0.6);
+        const eased = easeInOutCubic(localT);
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.opacity = eased;
+        mesh.scale.setScalar(Math.max(0.01, eased));
+        const ringMat = ring.material as THREE.MeshBasicMaterial;
+        ringMat.opacity = eased * (0.2 + n.activation * 0.35);
+      }
+      for (const tube of edgeTubes) {
+        const fromKind = nodeMeta.get(tube.edge.fromId)!.kind;
+        const localT = clamp01((entranceElapsed - (layerDelay[fromKind] + 0.15)) / 0.6);
+        const mat = tube.mesh.material as THREE.MeshStandardMaterial;
+        const focusActive = selectedId || hoveredId;
+        if (!focusActive) mat.opacity = easeInOutCubic(localT) * tube.baseOpacity;
+      }
+
+      controls.update();
+
+      if (!cameraTargetGoal.equals(controls.target)) {
+        controls.target.lerp(cameraTargetGoal, 1 - Math.pow(0.001, dt));
+      }
+
+      if (!reduceMotion) {
+        for (const [id, mesh] of nodeMeshes) {
+          const meta = nodeMeta.get(id)!;
+          const mat = mesh.material as THREE.MeshStandardMaterial;
+          const pulse = 0.85 + Math.sin(t * (1.2 + meta.activation) + meta.activation * 4) * 0.15;
+          const boost = hoveredId === id || selectedId === id ? 1.35 : 1;
+          mat.emissiveIntensity = (0.35 + meta.activation * 0.9) * pulse * boost;
+          const breathe = 1 + Math.sin(t * 2 + meta.activation * 3) * 0.03 * meta.activation;
+          const focusScale = hoveredId === id || selectedId === id ? 1.12 : 1;
+          const entranceScale = mesh.scale.x;
+          if (entranceElapsed > 0.6) mesh.scale.setScalar(breathe * focusScale);
+          else mesh.scale.setScalar(Math.min(entranceScale, breathe * focusScale));
+        }
+
+        for (const child of nodeGroup.children) {
+          if (child.userData?.isRing) child.quaternion.copy(camera.quaternion);
+        }
+
+        for (const tube of edgeTubes) {
+          const mat = tube.mesh.material as THREE.MeshStandardMaterial;
+          mat.emissiveIntensity = 0.15 + tube.weight * 0.55 + Math.sin(t * 2 + tube.weight * 5) * 0.08;
+        }
+
+        if (t > nextWaveAt) {
+          fireWave(now);
+          nextWaveAt = t + 0.5 + Math.random() * 0.6;
+        }
+
+        for (let i = impulses.length - 1; i >= 0; i--) {
+          const impulse = impulses[i];
+          const edge = layout.edges[impulse.edgeIndex];
+          if (!edge) {
+            impulseGroup.remove(impulse.mesh);
+            impulses.splice(i, 1);
+            continue;
+          }
+          impulse.t += impulse.speed * dt;
+          const eased = easeInOutCubic(clamp01(impulse.t));
+          impulse.mesh.position.copy(edge.curve.getPoint(eased));
+          const mat = impulse.mesh.material as THREE.MeshStandardMaterial;
+          mat.emissiveIntensity = 1.6 + Math.sin(eased * Math.PI) * 0.8;
+          const fadeOut = impulse.t > 0.85 ? clamp01((1 - impulse.t) / 0.15) : 1;
+          mat.opacity = 0.95 * fadeOut;
+
+          if (impulse.t >= 1) {
+            if (impulse.stage === 1) {
+              const outgoing = hiddenOutgoing.get(edge.toId);
+              if (outgoing && outgoing.length) {
+                const top = outgoing.slice().sort((a, b) => b.e.weight - a.e.weight).slice(0, 2);
+                top.forEach(({ i: nextIndex }) => spawnImpulse(nextIndex, 2, now));
+              }
+            }
+            impulseGroup.remove(impulse.mesh);
+            geoDisposeSafe(impulse.mesh);
+            impulses.splice(i, 1);
+          }
+        }
+      }
+
+      composer.render();
+    };
+
     const labelSprites: THREE.Sprite[] = [];
     function makeLabel(text: string, color = '#e2e8f0') {
       const canvas = document.createElement('canvas');
@@ -325,7 +571,7 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       canvas.height = 64;
       const ctx = canvas.getContext('2d')!;
       ctx.clearRect(0, 0, 256, 64);
-      ctx.font = '600 22px Inter, system-ui, sans-serif';
+      ctx.font = '600 22px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.fillStyle = color;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -364,96 +610,6 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       labelSprites.push(s);
     }
 
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let hoveredId: string | null = null;
-
-    function onPointerMove(event: PointerEvent) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(pickables, false);
-      const hit = hits[0]?.object as THREE.Mesh | undefined;
-      const id = (hit?.userData?.id as string) || null;
-      if (id !== hoveredId) {
-        hoveredId = id;
-        if (id) {
-          const meta = nodeMeta.get(id);
-          if (meta) {
-            setHover({
-              label: meta.label,
-              affinity: meta.affinity,
-              description: meta.description,
-              kind: meta.kind,
-              activation: meta.activation,
-            });
-            renderer.domElement.style.cursor = 'pointer';
-          }
-        } else {
-          setHover(null);
-          renderer.domElement.style.cursor = 'default';
-        }
-      }
-    }
-
-    function onPointerLeave() {
-      hoveredId = null;
-      setHover(null);
-      renderer.domElement.style.cursor = 'default';
-    }
-
-    renderer.domElement.addEventListener('pointermove', onPointerMove);
-    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
-
-    const clock = new THREE.Clock();
-    let frameId = 0;
-    let disposed = false;
-
-    const animate = () => {
-      if (disposed) return;
-      frameId = requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.elapsedTime;
-
-      if (!reduceMotion) {
-        graphRoot.rotation.y = Math.sin(t * 0.15) * 0.06;
-
-        for (const [id, mesh] of nodeMeshes) {
-          const meta = nodeMeta.get(id)!;
-          const mat = mesh.material as THREE.MeshStandardMaterial;
-          const pulse = 0.85 + Math.sin(t * (1.2 + meta.activation) + meta.activation * 4) * 0.15;
-          const boost = hoveredId === id ? 1.35 : 1;
-          mat.emissiveIntensity = (0.35 + meta.activation * 0.9) * pulse * boost;
-          const s = 1 + Math.sin(t * 2 + meta.activation * 3) * 0.03 * meta.activation;
-          mesh.scale.setScalar(s * (hoveredId === id ? 1.12 : 1));
-        }
-
-        for (const child of nodeGroup.children) {
-          if (child.userData?.isRing) {
-            child.quaternion.copy(camera.quaternion);
-          }
-        }
-
-        for (const tube of edgeTubes) {
-          const mat = tube.mesh.material as THREE.MeshStandardMaterial;
-          mat.emissiveIntensity = 0.15 + tube.weight * 0.55 + Math.sin(t * 2 + tube.weight * 5) * 0.08;
-        }
-
-        for (const impulse of impulses) {
-          const edge = layout.edges[impulse.edgeIndex];
-          if (!edge) continue;
-          impulse.t = (impulse.t + impulse.speed * dt) % 1;
-          impulse.mesh.position.copy(edge.curve.getPoint(impulse.t));
-          const mat = impulse.mesh.material as THREE.MeshStandardMaterial;
-          mat.emissiveIntensity = 1.4 + Math.sin(impulse.t * Math.PI * 2) * 0.5;
-          impulse.mesh.scale.setScalar(0.7 + edge.weight * 0.8);
-        }
-      }
-
-      renderer.render(scene, camera);
-    };
-
     animate();
     setReady(true);
 
@@ -464,15 +620,20 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      composer.setSize(w, h);
+      bloomPass.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
     return () => {
       disposed = true;
       cancelAnimationFrame(frameId);
+      if (idleTimer) clearTimeout(idleTimer);
       window.removeEventListener('resize', onResize);
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
+      renderer.domElement.removeEventListener('click', onClick);
+      controls.dispose();
       setHover(null);
       setReady(false);
 
@@ -489,6 +650,7 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
           mat.dispose();
         }
       });
+      composer.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);
@@ -518,7 +680,6 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       </div>
 
       <div
-        ref={tooltipRef}
         className={cn(
           'pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl border border-white/10 bg-slate-950/90 p-3 text-sm shadow-lg backdrop-blur transition-opacity duration-150',
           hover ? 'opacity-100' : 'opacity-0'
@@ -527,7 +688,14 @@ export function NeuralProgramGraph({ features, programs, className }: NeuralProg
       >
         {hover && (
           <>
-            <p className="font-semibold text-sky-200">{hover.label}</p>
+            <p className="font-semibold text-sky-200">
+              {hover.label}
+              {hover.locked && (
+                <span className="ml-2 text-[10px] font-normal text-slate-400">
+                  (fijado — clic para soltar)
+                </span>
+              )}
+            </p>
             <p className="text-xs text-slate-400">
               {hover.kind === 'program'
                 ? `Afinidad ${Math.round((hover.affinity || 0) * 100)}%`
