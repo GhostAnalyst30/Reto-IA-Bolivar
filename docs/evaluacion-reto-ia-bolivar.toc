@@ -1,0 +1,20 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{Resumen ejecutivo}{1}{section*.2}%
+\contentsline {section}{Método y criterio de evidencia}{1}{section*.3}%
+\contentsline {section}{\numberline {1}Alineación estratégica}{2}{section.1}%
+\contentsline {section}{\numberline {2}Retorno a la inversión}{2}{section.2}%
+\contentsline {section}{\numberline {3}Análisis y rediseño del proceso}{3}{section.3}%
+\contentsline {section}{\numberline {4}Grado de avance del prototipo}{4}{section.4}%
+\contentsline {section}{\numberline {5}Accesibilidad, limpieza y trazabilidad de datos}{5}{section.5}%
+\contentsline {section}{\numberline {6}Factibilidad técnica}{5}{section.6}%
+\contentsline {section}{\numberline {7}Escalabilidad y reutilización}{6}{section.7}%
+\contentsline {section}{\numberline {8}Gobernanza, seguridad y cumplimiento}{7}{section.8}%
+\contentsline {section}{\numberline {9}Explicabilidad y auditoría}{7}{section.9}%
+\contentsline {section}{\numberline {10}Mantenimiento, MLOps y monitorización}{8}{section.10}%
+\contentsline {section}{\numberline {11}Dueño y supervisión humana}{9}{section.11}%
+\contentsline {section}{\numberline {12}Aceptación, capacitación y adopción}{9}{section.12}%
+\contentsline {section}{\numberline {13}Análisis consolidado de ROI}{11}{section.13}%
+\contentsline {section}{\numberline {14}Hoja de ruta de control}{11}{section.14}%
+\contentsline {section}{\numberline {15}Matriz de trazabilidad técnica}{12}{section.15}%
+\contentsline {section}{\numberline {16}Evidencia visual del prototipo}{13}{section.16}%
+\contentsline {section}{Conclusión}{15}{section*.8}%
